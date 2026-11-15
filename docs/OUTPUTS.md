@@ -1,91 +1,73 @@
-# Results and Completion
+# Outputs
 
-## Output Tree
+## Manuscript CSV bundle
 
-This table describes the full core-analysis exports, including the complete
-gene-level workbook. The compact submission tables and the separate design
-benchmark are indexed under [Publication package](PUBLICATION.md).
+`run` exports to `RUN/results/` automatically after all selected stages succeed.
+It then renders `RUN/figures/` before reporting the workflow as complete.
+`report --source RUN --output NEW_DIR` exports the same layout independently.
+Explicit `--study`, `--design`, `--counts` and `--tails` accept completed sources.
 
-| Directory | Content |
+| Path | Contents |
 | --- | --- |
-| core/raw | Verified public downloads |
-| core/prepared | Newly generated discovery, human and mouse inputs |
-| core/results | Main coefficients, paired changes, families, precision, variance and calibration |
-| matched/results | Eight human variants, seven mouse arms, count-pipeline summaries and failure inventory |
-| benchmark/final_results | General paired calibration and five-model cage comparison |
-| supplementary | Nine supplementary groups, per-stage inputs/results and completion receipts |
-| figures | Eight main numerical displays, PDF/PNG and CSV |
-| reporting/S01 ... S20 | Full-precision supplementary CSV exports |
-| reporting/block_sources.csv | 112 workbook-block references to computed source tables |
-| reporting/Supplementary_Tables.xlsx | 20 worksheets and 112 complete sections, with the S01 catalog |
-| reporting/workbook_manifest.json | Workbook SHA256, source mapping, counts and header rows |
-| reporting/source_index.csv | Export size, row count and SHA256 |
-| reporting/figures | Twelve supplementary PDF/PNG displays and their numerical sources |
+| tables/Table1.csv ... Table3.csv | Main-paper overview, diagnostic actions and testing families; quantities derived from current summaries |
+| tables/TableS1.csv ... TableS23.csv | 98 manuscript sections combined by table number |
+| figure_data/*.csv | Eight independent plot inputs; all other plot inputs are explicit views of table sections |
+| manifest.csv | Section/figure mapping, columns, types, row counts and SHA256 fingerprints |
 
-The workbook is assembled from the indexed CSVs. A single source can supply multiple blocks. Full families are exported, including null results and missing test slots; a selected figure need not display every source row. Word layout is not regenerated.
+Each table has `section` and `record` columns. Columns unused by a section are
+blank. The manifest supplies each section's native column list and types.
+S2.1 is the reported threshold-crossing union; S4.1 includes the prespecified
+display set and the two reported paired-test threshold unions. Full-family
+adjusted p-values are retained, never recalculated after display selection.
 
-S6.6 contains context-specific human sex counts, S10.2 contains CAMERA results, and S20.13-S20.17 contain per-dataset count metrics, paired metrics, unavailable positions, generator parameters and complete simulation jobs. These seven blocks extend the 105-block layout in archived v2.1.0. The new exporter requires exactly 112 block identifiers; collection can also read completed legacy 105-block runs for re-export.
+The full export has exactly 35 CSV files: 3 main tables, 23 supplementary tables,
+8 additional figure datasets and one manifest. S20.7 aliases S17.7; its rows are
+stored once, with both table IDs retained. Explicit schema projections, not
+floating-point equality, determine which files exist. Missing sections and
+undeclared files are errors, even if their manifest entries have also been removed.
+Partial workflows export only selected stages. Dataset counts in rows apply to
+that run; a smoke or pilot run is not publication evidence.
 
-S1.2 uses public entry points and input-version definitions. Workbook protocol displays omit machine-specific directories and identify generated input filenames. CSV/JSON protocol records and download receipts remain complete. Protocol job arrays are displayed as a reference to the losslessly expanded S20.17 instead of exceeding Excel's 32,767-character cell limit. Unexpected overlong cells stop the export rather than being truncated.
+`inputs/publication.json` is the machine-readable schema for tables and figures.
+Both computed results and `--kind publication` replay use it. Replay is labeled
+`recorded_publication_evidence`; new calculation exports are labeled
+`computed_results`. Missing calculation inputs never fall back to the replay.
 
-## Key Results
+Raw matrices, task-level metrics, logs, receipts and source snapshots stay in the
+run directory for computation and resume. They are not copied into the CSV bundle.
+No workbook, per-replicate export, narrative report or review archive is generated.
 
-- core/results/human_results.csv.gz: coefficients, SE, df, p and reserved-family q.
-- core/results/human_paired_changes.csv.gz: covariance-aware and HC3 difference tests.
-- core/results/human_precision.csv.gz: exact per-gene two-factor SE decomposition.
-- core/results/mouse_precision.csv.gz: design, posterior-SD and reweighting factors.
-- core/results/mouse_variance.csv.gz: cage variance, boundaries and availability.
-- matched/results/count_pipeline_summary.csv: scenario/model FDR, power and coverage.
-- matched/results/count_pipeline_unavailable_genes.csv: full missing gene-level records.
-- matched/results/count_pipeline_diagnostic_inventory.csv: dataset/model denominator counts.
+## Submission correspondence
 
-Gene rows and dataset-model counts have different units. Match their explicit keys; do not infer the number of missing evaluations from the number of unique genes.
-
-## Completion States
-
-INTEGRATED_ANALYSES_COMPLETE means all requested main and supplementary processes and exports finished. RESULT_EXPORTS_COMPLETE identifies the final reporting export. Neither status asserts that the results equal every manuscript number. PRIMARY_ANALYSES_COMPLETE is deliberately narrower and is used only with --primary-only.
-
-Implementation coverage in inputs/paper_coverage.json is separate from execution. Source integration, unit tests, successful server execution and numerical agreement with a manuscript are four different checks.
-
-Unavailable individual tests and prespecified non-estimability remain explicit. Technical errors stop a stage. Whole failed empirical arms cannot count as successful matched-model tasks. Missing p values occupy reserved multiplicity slots but remain missing in exported inference.
+Main Tables 1-3 are the three main-table CSVs. Supplementary methods (ESM_1)
+are authored text; its 15 figures are generated below. The 98 sections of ESM_2
+are fully represented by the supplementary CSVs and manifest, without exporting
+a redundant workbook. ESM_3 is the framework release archive. The calculation
+pipeline does not rewrite the manuscript or reuse old narrative as a new result.
 
 ## Figures
 
-Main figures show human estimates, testing families, seven mouse arms, precision decomposition, general paired calibration, count validation, cage means/correlation and within-cage allocation.
+The full `run` command produces these files automatically in `RUN/figures/`.
+For a separate redraw:
 
-Supplementary Figures S1-S12 show donor quality, astrocyte estimates, mouse panel consistency, cage ICC, layout rejection, coefficient/precision changes, design approximation, joint/paired tests, the diagnostic workflow, selected coefficient changes, donor-conditioned calibration and general-grid cancellation/power. PDF is the vector output; PNG is a preview.
+`python run.py figures --source CSV_BUNDLE --output NEW_DIR`
 
-### Publication Artwork
+| Output | Contents |
+| --- | --- |
+| Fig1.pdf ... Fig10.pdf | Ten main figures |
+| FigS1.pdf ... FigS15.pdf | Fifteen supplementary figures |
+| plot_environment.json | Renderer, packages and font |
+| layout_checks.json | Dimensions and text-boundary checks |
 
-The separate [publication figure package](../publication_figures/README.md)
-renders the manuscript's ten main and fifteen supplementary figures:
+Available figure IDs come from the bundle. `--figures 1 10 S15` selects a subset.
+TIFF requires `--tiff`; SVG and PNG require `--editable`. All renderers use the
+same supplied CSV bundle and preserve manuscript figure numbering.
+`RUN/figures.json` is an internal resume receipt; it is not a submission file.
+Figures are published together after layout checks, so an interrupted renderer
+does not leave a partially completed final figure directory.
 
-```bash
-python publication_figures/make_figures.py
-```
+## Optional user-data diagnostics
 
-Its outputs go to `publication_figures/output/`, outside experiment directories.
-The [figure index](../publication_figures/FIGURE_INDEX.md) gives the publication
-order and source-table mapping; this order differs from the analysis displays
-listed above. Included compact extracts are fixed plotting inputs, never inputs
-to the public-data analysis pipeline. Rendering them neither reruns an experiment
-nor changes a run's completion status.
-
-## Supplementary Simulation Inputs
-
-The completed `supplementary/simulations/attempt_*` directory contains
-`simulation_animal_order.csv` and `simulation_input_order.json`, recording the
-animal-to-random-draw mapping and its hashes. These accompany `scenarios.csv`,
-`layout_units.csv`, `layout_registry.csv`, R versions and per-repetition results.
-Existing completed experiments without the two additional order files remain
-interpretable using their prepared mouse metadata and layout inputs; collection
-does not invent new execution records for them.
-
-## Collection
-
-collect_results.py copies the completed reporting/ and figures/ directories with completion and environment records. Supplementary numerical summaries and compact per-repetition result tables are retained where required for verification. It excludes raw counts, prepared expression matrices and cell-level annotations. It creates a normal directory, never a ZIP.
-
-The curated extracts in `publication_figures/data/` reproduce the artwork;
-`publication_tables/data/` contains the 92 compact submission-table sections.
-Do not add full runtime results or software environments to
-the minimal source checkout. No remote archive is created automatically.
+`design`: summary.json and inputs.json.
+`compare`: genes.csv, summary.json and inputs.json.
+These commands do not run as part of the manuscript CSV export.

@@ -7,10 +7,10 @@ from matplotlib.patches import Patch
 
 
 def fig9(p):
-    designs = p.read('extension_design_diagnostics')
-    counts = p.read('extension_counts_summary')
-    hold = p.read('extension_heldout_rule_evaluation')
-    empirical = p.read('extension_empirical_design_diagnostics').iloc[0]
+    designs = p.read('design_design_diagnostics')
+    counts = p.read('design_counts_summary')
+    hold = p.read('design_heldout_rule_evaluation')
+    empirical = p.read('design_empirical_design_diagnostics').iloc[0]
     fig, axs = plt.subplots(2, 2, figsize=(p.WIDTH, 7.6))
     fig.subplots_adjust(left=.11, right=.98, bottom=.14, top=.88,
                         wspace=.40, hspace=.52)
@@ -74,7 +74,7 @@ def fig9(p):
                     [r.heldout_fdr_ci_upper-r.heldout_fdr]])*100,
                     fmt=p.MARKERS[r.model],color=p.PALETTE[r.model],ms=4,
                     elinewidth=.9,capsize=1.7)
-        labels.append(f'{r.design[-1]}/3 | {r.scenario+1}')
+        labels.append(f'{r.design[-1]}/3 | {int(r.scenario)+1}')
     ax.set_yticks(range(len(selected)),labels,fontsize=8.0)
     ax.invert_yaxis()
     ax.set(xlabel='Held-out FDR (%)',ylabel='Information level | scenario',xlim=(-.5,18))
@@ -89,8 +89,8 @@ def fig9(p):
 
 
 def figs13(p):
-    z=p.read('extension_gaussian_summary')
-    designs=p.read('extension_design_diagnostics')
+    z=p.read('design_gaussian_summary')
+    designs=p.read('design_design_diagnostics')
     z=z.merge(designs[['design','ewi']],on='design',validate='many_to_one')
     models=['baseline','re_known_covariance','fixed','mundlak_known_covariance']
     labels=['No cage','Known-covariance RE','Cage fixed','Known-covariance Mundlak']

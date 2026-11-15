@@ -1,13 +1,12 @@
 """Reproduce the manuscript's ten main and fifteen supplementary figures.
 
-All numerical inputs are fixed source-table extracts. This script performs only
-display aggregation; it does not refit models or rerun simulations.
+Numerical inputs come from an explicit manuscript CSV bundle. This script
+performs display aggregation; it does not refit models or rerun simulations.
 """
 from __future__ import annotations
 
 import argparse
 import gc
-import hashlib
 import json
 from pathlib import Path
 
@@ -19,7 +18,7 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, FancyArrowPatch
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, ScalarFormatter
 from matplotlib.text import Text
 
 ROOT = Path(__file__).resolve().parent
@@ -56,6 +55,8 @@ LAYOUTS = ['n72_s6_m000_g36','n72_s6_m050_g36','n72_s6_m100_g36']
 OUT = None
 TIFF = False
 QA = []
+PDF_ONLY = False
+BUNDLE = None
 
 
 def style():
@@ -74,25 +75,15 @@ def style():
 
 
 def read(name):
-    return pd.read_csv(ROOT/'data'/(name+'.csv.gz'),low_memory=False)
+    if BUNDLE is None:
+        raise ValueError('An explicit CSV bundle is required')
+    return BUNDLE.read('figure_data', name)
 
 
 def verify_inputs():
-    manifest=pd.read_csv(ROOT/'source_index.csv')
-    for row in manifest.itertuples():
-        p=ROOT/row.file
-        if hashlib.sha256(p.read_bytes()).hexdigest()!=row.sha256:
-            raise ValueError('Input checksum mismatch: '+row.file)
-    h=read('clinical_pairs').dropna()
-    selected=h[h.q_joint_base.lt(.05)]
-    bins=[0,.01,.02,.03,.04,.05,.10,.20]
-    assert len(h)==3744 and len(selected)==40
-    assert np.histogram(selected.q_joint_base,bins)[0].tolist()==[0,2,7,15,16,0,0]
-    assert np.histogram(selected.q_joint_quality,bins)[0].tolist()==[0,0,0,0,0,15,25]
-    c=read('count_summary')
-    z=c[c.cage_log2_sd.eq(0)&c.cage_mean_amplitude.eq(.5)&c.de_fraction.gt(0)].set_index('model')
-    for model, expected in [('dream_native',57.27),('cage_fixed',4.54),('mundlak_native',5.69)]:
-        assert round(z.loc[model,'FDR_mean']*100,2)==expected
+    if BUNDLE is None:
+        raise ValueError('An explicit CSV bundle is required')
+    BUNDLE.verify()
 
 
 def panel(ax, letter, title=None):
@@ -134,6 +125,25 @@ def points(ax,x,z,metric,model,scale=1,mean=False,connect=False):
 
 
 def export(fig,name):
+    # A new run can exceed the original display range; never silently clip its estimates.
+    for ax in fig.axes:
+        if ax.get_label() == '<colorbar>':
+            continue
+        for bounds, getlim, setlim, scale, axis in ((ax.dataLim.intervalx, ax.get_xlim, ax.set_xlim, ax.get_xscale(), ax.xaxis),
+                                                  (ax.dataLim.intervaly, ax.get_ylim, ax.set_ylim, ax.get_yscale(), ax.yaxis)):
+            limits = getlim(); lo, hi = sorted(limits)
+            if scale == 'linear' and np.isfinite(bounds).all() and (bounds[0] < lo or bounds[1] > hi):
+                low, high = min(lo,bounds[0]), max(hi,bounds[1])
+                pad = max(high-low,1e-6)*.025
+                setlim((low-pad,high+pad) if limits[0] < limits[1] else (high+pad,low-pad))
+                labels=[t.get_text() for t in axis.get_ticklabels() if t.get_text()]
+                try:
+                    for label in labels:float(label.replace('\N{MINUS SIGN}','-').replace(',',''))
+                except ValueError:
+                    pass
+                else:
+                    axis.set_major_locator(MaxNLocator(5))
+                    axis.set_major_formatter(ScalarFormatter())
     fig.canvas.draw()
     renderer=fig.canvas.get_renderer()
     bounds=fig.bbox
@@ -154,8 +164,9 @@ def export(fig,name):
     QA.append({'figure':name,'width_mm':round(fig.get_figwidth()*25.4,2),
                'height_mm':round(fig.get_figheight()*25.4,2),'out_of_canvas_text':outside})
     fig.savefig(OUT/(name+'.pdf'),metadata={'Title':name,'Author':'','Creator':'Matplotlib'})
-    fig.savefig(OUT/'editable'/(name+'.svg'),metadata={'Title':name,'Creator':'Matplotlib'})
-    fig.savefig(OUT/'previews'/(name+'.png'),dpi=300)
+    if not PDF_ONLY:
+        fig.savefig(OUT/'editable'/(name+'.svg'),metadata={'Title':name,'Creator':'Matplotlib'})
+        fig.savefig(OUT/'previews'/(name+'.png'),dpi=300)
     if TIFF:
         from PIL import Image
         (OUT/'tiff').mkdir(exist_ok=True)
@@ -187,7 +198,11 @@ def fig1():
                 panel(ax,'abc'[r]);ax.set_ylabel(['FDR (%)','Power (%)','Coverage (%)'][r])
     axs[0,0].set_ylim(0,70);axs[1,0].set_ylim(65,102);axs[2,0].set_ylim(70,102)
     legend(fig,COUNT_MODELS,y=.988,ncol=3)
-    fig.text(.5,.025,'200 datasets per condition  |  13,312 genes  |  10% nonzero effects',ha='center',fontsize=8.5,color='#526371')
+    for field in ('repetitions','genes','de_fraction'):
+        if z[field].nunique()!=1:
+            raise ValueError('Figure 1 requires a common '+field+' across displayed scenarios')
+    caption=f'{int(z.repetitions.iloc[0]):,} datasets per condition  |  {int(z.genes.iloc[0]):,} genes  |  {100*z.de_fraction.iloc[0]:g}% nonzero effects'
+    fig.text(.5,.025,caption,ha='center',fontsize=8.5,color='#526371')
     export(fig,'Fig1')
 
 
@@ -255,22 +270,25 @@ def fig5():
     h=read('clinical_pairs').dropna();s=h[h.q_joint_base.lt(.05)].sort_values('q_joint_base')
     fig=plt.figure(figsize=(WIDTH,5.8));gs=fig.add_gridspec(2,2,width_ratios=[1,1],left=.105,right=.98,bottom=.18,top=.89,wspace=.36,hspace=.65)
     a=fig.add_subplot(gs[:,0]);b=fig.add_subplot(gs[0,1]);c=fig.add_subplot(gs[1,1])
-    a.hlines(range(40),s.q_joint_base,s.q_joint_quality,color='#C8D5DD',lw=.9)
-    a.scatter(s.q_joint_base,range(40),c=BLUE,s=18,marker='o',zorder=3)
-    a.scatter(s.q_joint_quality,range(40),c=ORANGE,s=18,marker='s',zorder=3)
-    ref(a,.05,True);a.set(xlabel='Joint q value',ylabel='40 base-significant records',yticks=[],xlim=(0,.21),ylim=(-1.5,40.5));a.set_xticks([0,.05,.1,.15,.2]);tidy(a,'x');panel(a,'a','Threshold transitions')
+    a.hlines(range(len(s)),s.q_joint_base,s.q_joint_quality,color='#C8D5DD',lw=.9)
+    a.scatter(s.q_joint_base,range(len(s)),c=BLUE,s=18,marker='o',zorder=3)
+    a.scatter(s.q_joint_quality,range(len(s)),c=ORANGE,s=18,marker='s',zorder=3)
+    ref(a,.05,True);a.set(xlabel='Joint q value',ylabel=f'{len(s)} base-significant records',yticks=[],xlim=(0,.21),ylim=(-1.5,len(s)+.5));a.set_xticks([0,.05,.1,.15,.2]);tidy(a,'x');panel(a,'a','Threshold transitions')
     b.scatter(h.beta_base,h.beta_quality,c='#A8BAC7',s=4,alpha=.45,rasterized=True)
     b.scatter(s.beta_base,s.beta_quality,c=BLUE,s=18,edgecolors='white',linewidths=.3)
-    bounds=h[['beta_base','beta_quality']].to_numpy();lo=np.min(bounds);hi=np.max(bounds)
+    bounds=h[['beta_base','beta_quality']].to_numpy();lo=np.min(bounds) if bounds.size else -1;hi=np.max(bounds) if bounds.size else 1
     b.plot([lo,hi],[lo,hi],ls='--',color='#87949F',lw=.8)
-    b.set(xlabel='Base coefficient (log2)',ylabel='Adjusted coefficient (log2)');tidy(b);panel(b,'b','All 3,744 clinical records')
+    b.set(xlabel='Base coefficient (log2)',ylabel='Adjusted coefficient (log2)');tidy(b);panel(b,'b',f'All {len(h):,} clinical records')
     bins=[0,.01,.02,.03,.04,.05,.10,.20];names=['<.01','.01-.02','.02-.03','.03-.04','.04-.05','.05-.10','.10-.20']
+    if s[['q_joint_base','q_joint_quality']].gt(.2).any().any():
+        bins.append(1);names.append('.20-1')
     for k,(field,col) in enumerate([('q_joint_base',BLUE),('q_joint_quality',ORANGE)]):
-        v=np.histogram(s[field],bins)[0];x=np.arange(7)+(k-.5)*.34
+        v=np.histogram(s[field],bins)[0];x=np.arange(len(names))+(k-.5)*.34
         c.bar(x,v,width=.31,color=col,zorder=2)
         for xx,yy in zip(x,v):
             if yy:c.text(xx,yy+.8,str(yy),ha='center',fontsize=8.2,color=col)
-    c.set_xticks(range(7),names,rotation=50,ha='right');c.set(ylabel='Records',ylim=(0,29));tidy(c);panel(c,'c','Selected-record q bins')
+    peak=max((np.histogram(s[field],bins)[0].max() for field in ('q_joint_base','q_joint_quality')),default=0)
+    c.set_xticks(range(len(names)),names,rotation=50,ha='right');c.set(ylabel='Records',ylim=(0,max(29,peak*1.18)));tidy(c);panel(c,'c','Selected-record q bins')
     handles=[Line2D([],[],color=BLUE,marker='o',ls='',label='Base'),Line2D([],[],color=ORANGE,marker='s',ls='',label='Quality adjusted')]
     fig.legend(handles=handles,loc='lower center',bbox_to_anchor=(.5,.025),ncol=2)
     export(fig,'Fig5')
@@ -300,7 +318,9 @@ def fig6():
     axs[0].set_yticks(range(4),labels);axs[0].invert_yaxis()
     for ax in axs:tidy(ax,'x');ax.set_xlabel('Records')
     axs[0].set_xlim(0,185);axs[1].set_xlim(0,45)
-    panel(axs[0],'a','Clinical discoveries');panel(axs[1],'b','Original 40 retained')
+    original=z[z.record_type.eq('retention')].original_base_discoveries.unique()
+    if len(original)!=1:raise ValueError('Inconsistent baseline selection count')
+    panel(axs[0],'a','Clinical discoveries');panel(axs[1],'b',f'Original {int(original[0])} retained')
     axs[0].legend(handles=[Rectangle((0,0),1,1,color=BLUE,label='Base'),Rectangle((0,0),1,1,color=ORANGE,label='Adjusted')],loc='upper left',bbox_to_anchor=(-.02,-.18),ncol=2)
     axs[1].legend(handles=[Rectangle((0,0),1,1,color=TEAL,label='Planned'),Rectangle((0,0),1,1,color=PURPLE,label='Available')],loc='upper left',bbox_to_anchor=(-.12,-.18),ncol=2)
     export(fig,'Fig6')
@@ -374,7 +394,7 @@ def figs1():
         for j,(v,col) in enumerate(zip(vals,[BLUE,ORANGE])):
             jitter=((np.arange(len(v))*0.61803398875)%1-.5)*.26
             ax.scatter(j+jitter,v,c=col,s=13,alpha=.7,edgecolors='white',linewidths=.25,zorder=3)
-        ax.set_xticks([0,1],['No dementia\nn = 41','Dementia\nn = 39']);ax.set_ylabel(label);tidy(ax);panel(ax,'abc'[k])
+        ax.set_xticks([0,1],[f'No dementia\nn = {len(vals[0])}',f'Dementia\nn = {len(vals[1])}']);ax.set_ylabel(label);tidy(ax);panel(ax,'abc'[k])
     export(fig,'FigS1')
 
 
@@ -513,10 +533,10 @@ def figs10():
     fig,axs=plt.subplots(1,2,figsize=(WIDTH,3.8))
     fig.subplots_adjust(left=.105,right=.98,bottom=.22,top=.85,wspace=.4)
     axs[0].scatter(z.log_abs_beta_ratio,z.minus_log_SE_ratio,s=26,c=BLUE,edgecolors='white',linewidths=.4)
-    lim=np.nanmax(np.abs(z[['log_abs_beta_ratio','minus_log_SE_ratio']].to_numpy()))*1.1
+    lim=max(np.nanmax(np.abs(z[['log_abs_beta_ratio','minus_log_SE_ratio']].to_numpy()))*1.1,1e-6) if len(z) else 1
     axs[0].plot([-lim,lim],[-lim,lim],'--',color='#A9B5BE',lw=.8);axs[0].plot([-lim,lim],[lim,-lim],'--',color='#A9B5BE',lw=.8)
     ref(axs[0],0);ref(axs[0],0,True);axs[0].set(xlabel='Log absolute coefficient ratio',ylabel='Negative log SE ratio');tidy(axs[0]);panel(axs[0],'a')
-    x=np.arange(40)
+    x=np.arange(len(z))
     axs[1].bar(x-.18,z.log_abs_beta_ratio,width=.36,color=BLUE,label='Coefficient')
     axs[1].bar(x+.18,z.minus_log_SE_ratio,width=.36,color=ORANGE,label='Precision')
     axs[1].plot(x,z.log_abs_t_ratio,color=INK,lw=1.1,label='Sum')
@@ -581,13 +601,19 @@ FUNCTIONS.update({'10': lambda: fig10(sys.modules[__name__]),
 
 
 def main():
-    global OUT,TIFF
+    global OUT,TIFF,PDF_ONLY,BUNDLE
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,default=ROOT/'output')
+    parser.add_argument('--source',type=Path,required=True)
     parser.add_argument('--figures',nargs='+',choices=list(FUNCTIONS),default=list(FUNCTIONS))
     parser.add_argument('--tiff',action='store_true',help='Also export losslessly compressed 600-dpi TIFF files')
-    args=parser.parse_args();OUT=args.output;TIFF=args.tiff
-    for p in [OUT,OUT/'previews',OUT/'editable']:p.mkdir(parents=True,exist_ok=True)
+    parser.add_argument('--pdf-only',action='store_true',help='Omit duplicate PNG and SVG versions')
+    args=parser.parse_args();OUT=args.output;TIFF=args.tiff;PDF_ONLY=args.pdf_only
+    from adjscope_tx.publication import Bundle
+    BUNDLE = Bundle(args.source).verify()
+    if set(args.figures) - set(BUNDLE.figures()):
+        raise ValueError('CSV bundle does not contain all requested figures')
+    for p in ([OUT] if PDF_ONLY else [OUT,OUT/'previews',OUT/'editable']):p.mkdir(parents=True,exist_ok=True)
     style();verify_inputs()
     for name in args.figures:
         FUNCTIONS[name]()

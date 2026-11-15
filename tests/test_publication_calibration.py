@@ -6,16 +6,23 @@ import shutil
 import tempfile
 import unittest
 
-from publication_calibration import report
+from adjscope_tx.publication import Bundle
+from adjscope_tx.storage import ROOT
+
+
+def read(name):
+    key={'tail_summary':'S23.1','count_summary':'S22.1'}[name]
+    return Bundle(ROOT/'inputs/evidence').read('table',key).to_dict('records')
 
 
 class CalibrationPublicationTests(unittest.TestCase):
     def test_complete_inputs(self):
-        self.assertEqual(len(report.verify()), 6)
-        self.assertEqual(len(report.summarize()), 16)
+        Bundle(ROOT/'inputs/evidence').verify()
+        self.assertEqual(len(read('count_summary')),96)
+        self.assertEqual(len(read('tail_summary')),72)
 
     def test_gaussian_headline(self):
-        rows = report.read('tail_summary')
+        rows = read('tail_summary')
         r = next(r for r in rows if (r['scenario'], r['arm'], r['test']) == ('s09', 'gaussian_unit', 'HC3'))
         self.assertAlmostEqual(float(r['fdp_planned_050']), .108)
         self.assertAlmostEqual(float(r['bonferroni_fwer']), .106)
@@ -25,21 +32,23 @@ class CalibrationPublicationTests(unittest.TestCase):
     def test_checksums_reject_changed_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / 'source'
-            shutil.copytree(report.ROOT, root)
-            path = root / 'data/count_summary.csv.gz'
+            shutil.copytree(ROOT/'inputs/evidence', root)
+            path = root / 'tables/TableS22.csv.gz'
             path.write_bytes(path.read_bytes() + b'x')
-            with self.assertRaisesRegex(ValueError, 'checksum'):
-                report.verify(root)
+            with self.assertRaisesRegex(ValueError, 'changed'):
+                Bundle(root).verify()
 
     def test_output_safety_and_separate_families(self):
+        from adjscope_tx.reports import export_publication
+        from adjscope_tx.publication import Bundle
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / 'report'
-            self.assertEqual(report.main(['--output', str(out)]), 0)
-            rows = json.loads((out / 'summary.json').read_text())
-            r = next(r for r in rows if (r['study'], r['arm'], r['test']) == ('tail', 'gaussian_unit', 'HC3'))
-            self.assertGreater(r['fdp_retained_050_max'], r['fdp_planned_050_max'])
-            with self.assertRaises(SystemExit):
-                report.main(['--output', str(out)])
+            export_publication(out)
+            frame = Bundle(out).read('table','S23.1')
+            rows = frame[frame.arm.eq('gaussian_unit') & frame.test.eq('HC3')]
+            self.assertGreater(rows.fdp_retained_050.max(), rows.fdp_planned_050.max())
+            with self.assertRaises(ValueError):
+                export_publication(out)
 
 
 if __name__ == '__main__':

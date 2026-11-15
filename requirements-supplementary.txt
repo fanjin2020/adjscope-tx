@@ -1,4 +1,4 @@
-# Optional-environment specification; the launcher never installs this file.
+# Installed only by explicit setup-python; normal analysis never installs packages.
 # Installed supplementary versions are recorded and frozen per experiment.
 -r requirements.txt
 scikit-learn>=1.4,<2

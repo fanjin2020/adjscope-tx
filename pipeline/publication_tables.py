@@ -16,7 +16,6 @@ from .supplementary.common import reserved_bh
 VERSION = 'publication_exports_20261026_v3'
 BLOCK_COUNTS = (3,3,11,4,5,6,4,3,4,2,6,11,4,5,4,4,7,3,6,17)
 EXPECTED_BLOCKS = {f'S{s}.{i}' for s,n in enumerate(BLOCK_COUNTS,1) for i in range(1,n+1)}
-INPUT_DEFINITIONS_URL = 'https://github.com/fanjin2020/paper1-from-public/blob/v2.1.0/docs/DATA.md'
 KEY = ['spec', 'gene_symbol']
 ICC_EDGES = [-np.inf, .01, .10, .20, np.inf]
 ICC_LABELS = ['<0.01', '0.01-0.10', '0.10-0.20', '>=0.20']

@@ -8,12 +8,12 @@
     {"id":"mouse_seven_arm","status":"implemented","description":"Seven-arm matched mouse fits and Mundlak diagnostics","entry":"pipeline.matched"},
     {"id":"counts","status":"implemented","description":"1600 complete count-to-inference datasets","entry":"pipeline.matched"},
     {"id":"fixed_design","status":"implemented","description":"Donor-conditioned calibration, general paired tests and five-model cage benchmark","entry":"pipeline.calibration / pipeline.benchmark"},
-    {"id":"main_figures","status":"implemented","description":"Eight main figures and numeric source tables; not pixel-identical typesetting","entry":"pipeline.figures"},
+    {"id":"main_figures","status":"implemented","description":"Ten manuscript main figures from the exported CSV bundle","entry":"adjscope_tx.plotting"},
     {"id":"external_cohorts","status":"implemented","description":"S8/S9: public bulk, newly annotated human astrocytes and five additional public cohorts","entry":"pipeline.supplementary.driver: bulk/external/astro"},
     {"id":"cognition","status":"implemented","description":"S10: GSE1297 preparation and three MMSE models","entry":"pipeline.supplementary.driver: cognition"},
     {"id":"interactions_mixtures","status":"implemented","description":"S11: fresh annotation, doublet scores, six cell-class interactions and broad-class mixtures","entry":"pipeline.supplementary.driver: interactions/mixtures"},
     {"id":"input_sensitivities","status":"implemented","description":"S5/S6: age and quality/weight sensitivities on freshly prepared inputs","entry":"pipeline.supplementary.driver: age/quality"},
     {"id":"extended_simulations","status":"implemented","description":"S18/S19: conditional two-model and layout-specific three-model simulations","entry":"pipeline.supplementary.driver: simulations"},
-    {"id":"supplementary_derivations","status":"implemented","description":"S01-S20 numeric CSV exports, 112-block workbook and source map, and 12 computational displays; Word typesetting is not regenerated","entry":"pipeline.reporting / pipeline.workbook / pipeline.supplementary_figures"}
+    {"id":"supplementary_derivations","status":"implemented","description":"Internal analysis tables feed 98 manuscript sections in 23 CSVs and fifteen supplementary figures; Word typesetting is not regenerated","entry":"pipeline.reporting / adjscope_tx.publication / adjscope_tx.plotting"}
   ]
 }

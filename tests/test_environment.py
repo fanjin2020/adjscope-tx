@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-import run
-import reproduce_from_public as launcher
+from pipeline import study_runner as run
+from adjscope_tx import environment as launcher
 from pipeline import core, coverage, environment, lifecycle
 
 
@@ -49,7 +49,8 @@ class EnvironmentTests(unittest.TestCase):
             root = Path(d)
             self.fixture(root)
             identity = lifecycle.code_identity(root)
-            (root / 'reproduce_from_public.py').write_text('pass')
+            (root / 'adjscope_tx').mkdir()
+            (root / 'adjscope_tx/environment.py').write_text('pass')
             self.assertNotEqual(identity, lifecycle.code_identity(root))
 
     def test_version_drift_rejected_without_overwrite(self):
@@ -110,13 +111,6 @@ class EnvironmentTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'FULL-PAPER REPRODUCTION NOT READY'):
                 run.main(['--require-complete-paper'])
 
-    def test_default_launcher_cannot_silently_run_partial(self):
-        from pipeline import coverage
-        missing={'complete_paper':False,'missing':[{'id':'example','description':'missing implementation'}]}
-        with patch.object(coverage,'report',return_value=missing), \
-             patch.object(launcher, 'select_python', side_effect=AssertionError('must not probe')):
-            with self.assertRaisesRegex(ValueError, 'FULL-PAPER REPRODUCTION NOT READY'):
-                launcher.main([])
 
     def test_coverage_is_read_only(self):
         with tempfile.TemporaryDirectory() as d:
@@ -126,9 +120,6 @@ class EnvironmentTests(unittest.TestCase):
             self.assertTrue(json.loads(text.getvalue())['complete_paper'])
             self.assertFalse(out.exists())
 
-    def test_primary_only_is_explicit(self):
-        self.assertFalse(launcher.parser().parse_args([]).primary_only)
-        self.assertTrue(launcher.parser().parse_args(['--primary-only']).primary_only)
 
     def test_bad_python_candidate_never_selected(self):
         with patch.object(launcher, 'python_candidates', return_value=[Path('/bad/python')]), \
@@ -225,6 +216,51 @@ class EnvironmentTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'No compatible'):
                 launcher.select_python()
 
+    def check_cli_environment(self, directory, options=(), resume=False):
+        from adjscope_tx import cli
+        from adjscope_tx.workflow import WorkflowConfig
+        output = Path(directory) / 'run'
+        if resume:
+            output.mkdir()
+            saved = WorkflowConfig(output=output, python='/recorded/python').specification()
+            (output / 'workflow.json').write_text(json.dumps({'specification': saved}))
+        arguments = ['run', '--output', str(output), '--check-env', *options]
+        if resume:
+            arguments.append('--resume')
+        with contextlib.redirect_stdout(io.StringIO()), \
+             patch.object(launcher, 'select_r', return_value=('Rscript', [], {'R': 'test'})):
+            self.assertEqual(cli.execute_run(cli.parser().parse_args(arguments)), 0)
+        if not resume:
+            self.assertFalse(output.exists())
+
+    def test_fresh_cli_does_not_treat_bootstrap_python_as_explicit(self):
+        with tempfile.TemporaryDirectory() as d, \
+             patch.object(launcher, 'select_python', return_value=(Path('/compatible/python'), {})) as select:
+            self.check_cli_environment(d)
+        select.assert_called_once_with(None, supplementary=True, package_paths=())
+
+    def test_fresh_cli_retains_explicit_python(self):
+        with tempfile.TemporaryDirectory() as d, \
+             patch.object(launcher, 'select_python', return_value=(Path('/chosen/python'), {})) as select:
+            self.check_cli_environment(d, ('--python', '/chosen/python'))
+        select.assert_called_once_with('/chosen/python', supplementary=True, package_paths=())
+
+    def test_resume_cli_retains_recorded_python(self):
+        with tempfile.TemporaryDirectory() as d, \
+             patch.object(launcher, 'select_python', return_value=(Path('/recorded/python'), {})) as select:
+            self.check_cli_environment(d, resume=True)
+        select.assert_called_once_with('/recorded/python', supplementary=True, package_paths=())
+
+    def test_fresh_cli_falls_back_after_incompatible_current_environment(self):
+        bad = SimpleNamespace(returncode=1, stdout='', stderr='numpy version mismatch')
+        good = SimpleNamespace(returncode=0, stderr='', stdout='PAPER1_PYTHON\t{"python":"3.12.2"}\n')
+        with tempfile.TemporaryDirectory() as d, \
+             patch.object(launcher, 'python_candidates', return_value=[Path('/bad/python'), Path('/good/python')]) as candidates, \
+             patch.object(launcher.subprocess, 'run', side_effect=[bad, good]) as probe:
+            self.check_cli_environment(d)
+        candidates.assert_called_once_with(None)
+        self.assertEqual(probe.call_args_list[1].args[0][0], str(Path('/good/python')))
+
     def stage_fixture(self, base):
         root, work = base / 'source', base / 'work'
         root.mkdir()
@@ -267,6 +303,173 @@ class EnvironmentTests(unittest.TestCase):
                  self.assertRaisesRegex(ValueError, 'changed during execution'):
                 core.stage('example', compute, ['result.csv'], work, False)
             self.assertFalse((work / 'stages/example.json').exists())
+
+
+class PythonSetupTests(unittest.TestCase):
+    @contextlib.contextmanager
+    def fixture(self):
+        from adjscope_tx import workflow
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / 'code'
+            root.mkdir()
+            (root / 'requirements.txt').write_text('numpy==2.2.6\nopenpyxl==3.1.5\n')
+            (root / 'requirements-supplementary.txt').write_text('-r requirements.txt\nscrublet>=0.2.3,<0.3\n')
+            output = Path(d) / 'runtime'
+            venv = output / 'environment'
+            exe = venv / ('Scripts/python.exe' if launcher.os.name == 'nt' else 'bin/python')
+            record = {'python': '3.12.2', 'executable': str(exe), 'packages': {'openpyxl': '3.1.5'},
+                      'supplementary_packages': {'scrublet': '0.2.3'}}
+            state = SimpleNamespace(root=root, output=output, exe=exe, record=record,
+                                    calls=[], fail_install=False, mutate_requirements=False)
+
+            def stage(command, env, log):
+                state.calls.append(command)
+                self.assertNotIn('PYTHONPATH', env)
+                self.assertNotIn('PIP_TARGET', env)
+                self.assertEqual(env['PIP_CONFIG_FILE'], launcher.os.devnull)
+                self.assertEqual(env['R_LIBS'], '/unchanged/R/library')
+                if 'venv' in command:
+                    exe.parent.mkdir(parents=True, exist_ok=True)
+                    exe.touch()
+                if 'install' in command and state.fail_install:
+                    raise RuntimeError('simulated interrupted package download')
+                if 'install' in command and state.mutate_requirements:
+                    (root / 'requirements.txt').write_text('numpy==9.0.0\n')
+
+            probe = SimpleNamespace(returncode=0, stdout=json.dumps([str(venv), str(Path(d) / 'base')]))
+            with patch.object(launcher, 'ROOT', root), \
+                 patch.object(launcher.sys, 'version_info', (3, 12, 2)), \
+                 patch.dict(launcher.os.environ, {'PYTHONPATH': '/old/site', 'PIP_TARGET': '/old/env',
+                                                  'R_LIBS': '/unchanged/R/library'}), \
+                 patch.object(workflow, 'run_stage', side_effect=stage), \
+                 patch.object(launcher.subprocess, 'run', return_value=probe) as prefix_probe, \
+                 patch.object(launcher, 'select_python', return_value=(exe, record)) as select, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                state.prefix_probe, state.select = prefix_probe, select
+                yield state
+
+    def test_install_uses_owned_venv_full_requirements_and_pip_check(self):
+        with self.fixture() as s:
+            self.assertEqual(launcher.setup_python(s.output), s.exe)
+            self.assertEqual(len(s.calls), 3)
+            self.assertIn('venv', s.calls[0])
+            self.assertEqual(s.calls[1][0], str(s.exe))
+            self.assertIn('install', s.calls[1])
+            self.assertEqual(s.calls[1][-1], str(s.output / 'requirements-supplementary.txt'))
+            self.assertEqual(s.calls[2][-2:], ['pip', 'check'])
+            s.select.assert_called_once_with(str(s.exe), supplementary=True, isolated=True)
+            self.assertTrue((s.output / 'ready.json').is_file())
+            self.assertEqual((s.output / 'requirements.txt').read_bytes(), (s.root / 'requirements.txt').read_bytes())
+
+    def test_validated_runtime_is_reused_without_package_commands(self):
+        with self.fixture() as s:
+            launcher.setup_python(s.output)
+            before = (s.output / 'ready.json').read_bytes()
+            s.calls.clear()
+            launcher.setup_python(s.output)
+            launcher.setup_python(s.output, check_only=True)
+            self.assertEqual(s.calls, [])
+            self.assertEqual((s.output / 'ready.json').read_bytes(), before)
+
+    def test_partial_install_retries_without_marking_ready(self):
+        with self.fixture() as s:
+            s.fail_install = True
+            with self.assertRaisesRegex(RuntimeError, 'interrupted'):
+                launcher.setup_python(s.output)
+            self.assertTrue((s.output / 'setup.json').is_file())
+            self.assertFalse((s.output / 'ready.json').exists())
+            s.fail_install = False
+            launcher.setup_python(s.output)
+            self.assertTrue((s.output / 'ready.json').is_file())
+
+    def test_check_only_missing_runtime_is_read_only(self):
+        with self.fixture() as s:
+            with self.assertRaisesRegex(ValueError, 'No validated'):
+                launcher.setup_python(s.output, check_only=True)
+            self.assertFalse(s.output.exists())
+            self.assertEqual(s.calls, [])
+
+    def test_check_only_does_not_finish_partial_install(self):
+        with self.fixture() as s:
+            s.fail_install = True
+            with self.assertRaises(RuntimeError):
+                launcher.setup_python(s.output)
+            s.calls.clear()
+            with self.assertRaisesRegex(ValueError, 'No validated'):
+                launcher.setup_python(s.output, check_only=True)
+            self.assertEqual(s.calls, [])
+
+    def test_unowned_environment_is_untouched(self):
+        with self.fixture() as s:
+            s.output.mkdir()
+            existing = s.output / 'other_environment.txt'
+            existing.write_text('keep')
+            with self.assertRaisesRegex(ValueError, 'not an owned runtime'):
+                launcher.setup_python(s.output)
+            self.assertEqual(list(s.output.iterdir()), [existing])
+            self.assertEqual(existing.read_text(), 'keep')
+            self.assertEqual(s.calls, [])
+
+    def test_setup_cannot_overlap_source(self):
+        with self.fixture() as s:
+            with self.assertRaisesRegex(ValueError, 'overlaps source'):
+                launcher.setup_python(s.root / 'runtime')
+            self.assertFalse((s.root / 'runtime').exists())
+
+    def test_wrong_bootstrap_python_stops_before_creation(self):
+        with self.fixture() as s, patch.object(launcher.sys, 'version_info', (3, 11, 9)):
+            with self.assertRaisesRegex(ValueError, 'Python 3.12'):
+                launcher.setup_python(s.output)
+            self.assertFalse(s.output.exists())
+
+    def test_nonisolated_python_never_reaches_pip(self):
+        with self.fixture() as s:
+            s.prefix_probe.return_value.stdout = json.dumps(['/existing/conda', '/existing/conda'])
+            with self.assertRaisesRegex(ValueError, 'not isolated'):
+                launcher.setup_python(s.output)
+            self.assertEqual(len(s.calls), 1)
+            self.assertIn('venv', s.calls[0])
+            self.assertFalse((s.output / 'ready.json').exists())
+
+    def test_changed_validated_packages_are_not_repaired(self):
+        with self.fixture() as s:
+            launcher.setup_python(s.output)
+            before = (s.output / 'ready.json').read_bytes()
+            s.record['supplementary_packages']['scrublet'] = '0.2.4'
+            s.calls.clear()
+            with self.assertRaisesRegex(ValueError, 'Validated runtime changed'):
+                launcher.setup_python(s.output)
+            self.assertEqual(s.calls, [])
+            self.assertEqual((s.output / 'ready.json').read_bytes(), before)
+
+    def test_changed_requirements_do_not_modify_existing_runtime(self):
+        with self.fixture() as s:
+            launcher.setup_python(s.output)
+            (s.root / 'requirements.txt').write_text('numpy==9.0.0\n')
+            s.calls.clear()
+            with self.assertRaisesRegex(ValueError, 'requirements changed'):
+                launcher.setup_python(s.output)
+            self.assertEqual(s.calls, [])
+
+    def test_source_change_during_install_has_no_readiness_receipt(self):
+        with self.fixture() as s:
+            s.mutate_requirements = True
+            with self.assertRaisesRegex(ValueError, 'Source requirements changed during setup'):
+                launcher.setup_python(s.output)
+            self.assertFalse((s.output / 'ready.json').exists())
+
+    def test_failed_dependency_validation_has_no_readiness_receipt(self):
+        with self.fixture() as s:
+            s.select.side_effect = RuntimeError('missing openpyxl')
+            with self.assertRaisesRegex(RuntimeError, 'missing openpyxl'):
+                launcher.setup_python(s.output)
+            self.assertFalse((s.output / 'ready.json').exists())
+
+    def test_setup_is_explicit_cli_command(self):
+        from adjscope_tx import cli
+        with patch.object(launcher, 'setup_python') as setup:
+            self.assertEqual(cli.main(['setup-python', '--output', 'runtime', '--check-only']), 0)
+        setup.assert_called_once_with(Path('runtime'), check_only=True)
 
 
 if __name__ == '__main__':

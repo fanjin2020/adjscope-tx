@@ -3,8 +3,8 @@ message: "Please cite this software version and the associated manuscript when u
 title: "AdjScope-Tx: a diagnostic framework for covariate adjustment in transcriptomic analysis"
 type: software
 license: MIT
-version: 2.1.0+submission.20261108
-date-released: 2026-11-08
+version: 3.3.0
+date-released: 2026-11-11
 authors:
   - family-names: Fan
     given-names: Jin

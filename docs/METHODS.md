@@ -1,5 +1,13 @@
 # Analysis Definitions
 
+## Framework
+
+AdjScope-Tx follows the manuscript workflow in Fig. S9: match observations,
+response preprocessing and target coding; compare coefficients using their
+shared-response covariance; decompose precision changes; state testing families;
+and evaluate calibration at the intended threshold. The public `run` command
+executes these analyses, exports manuscript CSVs and renders the final figures.
+
 ## Human Models
 
 Eligible donor-context observations are aggregated from raw UMI counts. Base and quality-adjusted models use matched donors and gene backgrounds within context. Clinical status, conditional clinical status and ordinal Braak contrasts have distinct targets. The frontal panel is rediscovered, not imported or forced to a particular length. Missing or non-estimable positions remain explicit in planned testing families.
@@ -74,14 +82,44 @@ size and hash checks. Input and code identities are rechecked before final summa
 Core stages also freeze the installed Python and R package versions. The top-level
 runner checks the complete source identity before and after each subprocess.
 All advertised whole-paper execution is subject to the explicit coverage gate.
-The default integrated scope includes the central and supplementary analyses above,
-20-section CSV exports and computed result displays. Coverage is a statement about
+The default scope includes the analyses above, the design benchmark and paired
+count/tail calibration below, 98 table sections in 23 CSVs, ten main figures and
+fifteen supplementary figures. Coverage is a statement about
 implemented workflows, not a numerical claim about a completed run or manuscript agreement.
 Worker count is an execution setting, not a scientific parameter. Smoke tests reduce
 repetitions and gene counts and are not manuscript evidence.
 
 Matched task completion also checks numerical availability. An empirical model
 with no usable genes or a wholly failed count-model run is not issued a successful
-task receipt. Final completion requires an `ANALYSES_COMPLETE` summary. Individual
+task receipt. The study module requires an `ANALYSES_COMPLETE` summary; workflow
+completion additionally requires the selected calibration stages, CSVs and figures
+to pass verification. Individual
 unavailable genes and prespecified structural non-estimability in the separate
 cage benchmark remain explicit outcomes, not automatic errors.
+
+## Design Information and Conditional Screening
+
+Twelve synthetic allocations supply 48,000 Gaussian datasets and 4,800 count
+datasets. The observed mouse allocation supplies the empirical information
+diagnostic. Within-group information, estimability and analytical cage-mean
+sensitivity are reported separately from empirical model calibration.
+Screening is trained on twelve- and thirty-six-cage designs and evaluated on
+eighteen-cage designs. Unknown generating contexts produce abstention.
+The 7.5% screening cutoff is distinct from nominal 5% BH. These analyses supply
+Table S21 and Figs. 9 and S13.
+
+## Paired Count and Tail Calibration
+
+Twenty-four scenarios each contain 1,000 datasets with 3,000 generated genes.
+Each dataset repeats negative-binomial generation, expression filtering, TMM,
+voom, both model fits and the shared-response coefficient-difference test.
+Model-based and HC3 variances are evaluated with shared and design-specific
+weights. All paired contrasts are null. Planned- and retained-family BH rates,
+pointwise coverage and availability are separate outcomes (Table S22; Fig. S14).
+
+Six scenarios selected from that grid receive 500 fresh-seed datasets each.
+Six response/weight-source arms separate estimated weights, independently
+estimated weights, unit weights and Gaussian responses. Coverage, BH FDR,
+Bonferroni errors, small-p exceedances and paired arm comparisons use datasets
+as the replication unit. Gaussian variance geometry is descriptive and does
+not change the test reference distribution (Table S23; Figs. 10 and S15).

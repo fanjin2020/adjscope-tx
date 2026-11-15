@@ -114,25 +114,7 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(out.direction_comparison_status.iloc[5],'unknown_discovery_direction')
         pd.testing.assert_frame_equal(discovery_direction_comparison(out),out)
 
-    def test_review_output_is_short_and_does_not_repeat_run_name(self):
-        from datetime import datetime
-        from pipeline.result_collection import default_review_output
-        root=Path('/results')/('long_experiment_name_'*8)
-        out=default_review_output(root,datetime(2026,10,24,15,30,12))
-        self.assertEqual(out.parent,root.parent)
-        self.assertEqual(out.name,'p1_review_20261024_153012')
-        self.assertLess(len(out.name),30)
 
-    def test_figure_labels_use_family_positions_not_discovery_counts(self):
-        from pipeline.figures import family_scope_labels, highlighted_paired_design
-        scopes=pd.DataFrame(dict(model=['base','base','base'],scope=['all','context','context'],
-            denominator='planned',planned=[17064,711,711]))
-        labels=family_scope_labels(scopes)
-        self.assertIn('17,064 / family',labels['all'])
-        self.assertIn('711 / family',labels['context'])
-        designs=pd.DataFrame(dict(n=[80,80,40,80],leverage='ordinary',weights='uniform',
-            partial_correlation=[.3,.7,.3,.0]))
-        self.assertEqual(list(highlighted_paired_design(designs)),[True,False,False,False])
 
     def test_bins_include_boundary_fits(self):
         bins=pd.cut([0,.009,.01,.099,.1,.199,.2,1],P.ICC_EDGES,right=False,labels=P.ICC_LABELS)
@@ -164,34 +146,22 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(s.loc['mixed_cages_geometry_only','n'],4)
         a=s.loc['baseline'];self.assertAlmostEqual(a.unit_variance_beta_factor,1/a.genotype_residual_SS)
 
-    def test_reexport_environment_does_not_import_excel_or_R(self):
-        import paper1_reexport_results as R
-        from types import SimpleNamespace
-        record=dict(python=R.platform.python_version(),packages={n:'1' for n in R.PACKAGES})
-        with patch.object(R.importlib,'import_module',return_value=SimpleNamespace(__version__='1')) as p:
-            R.environment(record)
-        self.assertEqual([x.args[0] for x in p.call_args_list],list(R.PACKAGES))
+    def test_summary_export_is_separate_from_model_fitting(self):
+        from adjscope_tx import reports
+        import inspect
+        source=inspect.getsource(reports.export_publication)
+        self.assertNotIn('subprocess',source)
+        self.assertIn('Snapshot()',source)
 
     def test_reexport_refuses_inplace_or_existing_output(self):
-        from paper1_reexport_results import safe_output
+        from adjscope_tx.storage import separate_output
         with tempfile.TemporaryDirectory() as d:
             root=Path(d)/'run';project=Path(d)/'code';root.mkdir();project.mkdir()
-            with self.assertRaises(ValueError):safe_output(root,root/'export',project)
-            with self.assertRaises(ValueError):safe_output(root,project,project)
-            with self.assertRaises(ValueError):safe_output(root,Path(d),project)
-            safe_output(root,Path(d)/'new_export',project)
+            with self.assertRaises(ValueError):separate_output(root/'export',root,project)
+            with self.assertRaises(ValueError):separate_output(project,root,project)
+            with self.assertRaises(ValueError):separate_output(Path(d),root,project)
+            separate_output(Path(d)/'new_export',root,project)
 
-    def test_collection_handles_large_protocol_fields_when_imported(self):
-        import csv
-        from pipeline.result_collection import table_info
-        with tempfile.TemporaryDirectory() as d:
-            path=Path(d)/'protocol.csv'
-            pd.DataFrame({'value':['x'*300000,'quoted\nline']}).to_csv(path,index=False)
-            previous=csv.field_size_limit(131072)
-            try:
-                self.assertEqual(table_info(path),(2,1))
-                self.assertEqual(csv.field_size_limit(),131072)
-            finally:csv.field_size_limit(previous)
 
 
 if __name__=='__main__':unittest.main()

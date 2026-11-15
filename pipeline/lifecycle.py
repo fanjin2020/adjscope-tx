@@ -14,11 +14,9 @@ MARKER = "fresh_run.json"
 def code_identity(root):
     root = Path(root)
     paths = [root / n for n in ("run.py", "config.json", "requirements.txt")]
-    if (root / 'reproduce_from_public.py').is_file():
-        paths.append(root / 'reproduce_from_public.py')
     if (root / 'requirements-supplementary.txt').is_file():
         paths.append(root / 'requirements-supplementary.txt')
-    for folder in ("pipeline", "analysis", "tests", "inputs"):
+    for folder in ("adjscope_tx", "pipeline", "analysis", "tests", "inputs"):
         paths.extend(p for p in (root / folder).rglob("*") if p.suffix in (".py", ".R", ".json", ".csv"))
     digest = hashlib.sha256()
     for path in sorted(paths):

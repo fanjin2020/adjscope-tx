@@ -5,7 +5,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-DATA = Path(__file__).resolve().parent / 'data'
 ARMS = ['estimated_shared', 'estimated_design', 'independent_shared',
         'independent_design', 'fixed_unit', 'gaussian_unit']
 LABELS = ['Same counts\nshared weights', 'Same counts\nseparate weights',
@@ -14,8 +13,8 @@ LABELS = ['Same counts\nshared weights', 'Same counts\nseparate weights',
 CASES = ['s01', 's09', 's11', 's12', 's15', 's23']
 
 
-def read(name):
-    return pd.read_csv(DATA / ('paired_' + name + '.csv.gz'))
+def read(context, name):
+    return context.read('paired_' + name)
 
 
 def arm_cloud(ax, z, metric, c, labels=True):
@@ -35,7 +34,7 @@ def arm_cloud(ax, z, metric, c, labels=True):
 
 
 def fig10(c):
-    z = read('tail_summary')
+    z = read(c, 'tail_summary')
     fig = plt.figure(figsize=(c.WIDTH, 6.65))
     axes = [fig.add_axes(rect) for rect in [(.235,.53,.30,.37), (.665,.53,.30,.37),
                                           (.12,.12,.36,.27), (.615,.12,.35,.27)]]
@@ -53,7 +52,7 @@ def fig10(c):
     axes[2].set_xticks([95,95.25,95.5,95.75], ['95.00','95.25','95.50','95.75'])
     axes[2].tick_params(axis='x', labelsize=7.8)
     c.ref(axes[2],95,vertical=True); c.ref(axes[2],5); c.tidy(axes[2])
-    tail = read('tail_rates')
+    tail = read(c, 'tail_rates')
     tail = tail[tail.arm.eq('gaussian_unit') & tail.label.eq('bh_first')]
     for j,test in enumerate(['model_based','HC3']):
         a = tail[tail.test.eq(test)].set_index('scenario').loc[CASES]
@@ -65,13 +64,14 @@ def fig10(c):
     c.ref(axes[3],1); c.tidy(axes[3])
     for ax,letter in zip(axes,'abcd'): c.panel(ax,letter)
     c.legend(fig,['model_based','HC3'],y=.99)
-    fig.text(.5,.025,'500 datasets per scenario  |  3,000 planned genes  |  zero paired differences',
+    genes = round(.05 / float(tail.cutoff.iloc[0]))
+    fig.text(.5,.025,f'{int(z.datasets.iloc[0]):,} datasets per scenario  |  {genes:,} planned genes  |  zero paired differences',
              ha='center',fontsize=8)
     c.export(fig,'Fig10')
 
 
 def figs14(c):
-    z = read('count_summary')
+    z = read(c, 'count_summary')
     fig,axes=plt.subplots(2,2,figsize=(c.WIDTH,5.8))
     fig.subplots_adjust(left=.12,right=.98,bottom=.13,top=.88,wspace=.36,hspace=.44)
     for col,mode in enumerate(['shared','design_specific']):
@@ -96,13 +96,13 @@ def figs14(c):
             c.tidy(axes[row,col])
             c.panel(axes[row,col],'abcd'[2*row+col])
     c.legend(fig,['model_based','HC3'],y=.99)
-    fig.text(.5,.025,'24 scenarios  |  1,000 datasets per scenario  |  3,000 planned genes',
+    fig.text(.5,.025,f'{z.scenario.nunique()} scenarios  |  {int(z.datasets.iloc[0]):,} datasets per scenario  |  {int(z.genes.iloc[0]):,} planned genes',
              ha='center',fontsize=8)
     c.export(fig,'FigS14')
 
 
 def figs15(c):
-    z=read('tail_summary')
+    z=read(c, 'tail_summary')
     fig,axes=plt.subplots(2,3,figsize=(c.WIDTH,5.9),sharex=True,sharey=True)
     fig.subplots_adjust(left=.25,right=.98,bottom=.12,top=.88,wspace=.20,hspace=.37)
     for index,(ax,scenario) in enumerate(zip(axes.flat,CASES)):
@@ -120,7 +120,7 @@ def figs15(c):
         ax.set_ylim(5.55,-.55);ax.set_xlim(0,20);ax.set_xticks([0,5,10,15,20])
         ax.tick_params(axis='x',labelsize=7.5)
         r=a.iloc[0]
-        ax.set_title(f'{scenario}: n = {r.n}',fontsize=9,pad=10)
+        ax.set_title(f'{scenario}: n = {int(r.n)}',fontsize=9,pad=10)
         c.ref(ax,5,vertical=True);c.tidy(ax,'x');c.panel(ax,'abcdef'[index])
     c.legend(fig,['model_based','HC3'],y=.99)
     fig.text(.60,.035,'Planned-family BH FDR (%) with 95% Monte Carlo intervals',ha='center',fontsize=8)

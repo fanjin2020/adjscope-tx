@@ -12,16 +12,16 @@ import signal
 import statistics
 import time
 import uuid
-import zipfile
 from paired_count_calibration import driver as b
 from . import VERSION
 
 ROOT=b.ROOT
 ARMS=('estimated_shared','estimated_design','independent_shared','independent_design','fixed_unit','gaussian_unit')
 KEYS={(a,t) for a in ARMS for t in ('model_based','HC3')}
-FILES=tuple(dict.fromkeys(b.FILES+('paper1_paired_tail.py','run_paired_tail_diagnostics.sh',
+FILES=tuple(dict.fromkeys(b.FILES+(
     'paired_tail_diagnostics/__init__.py','paired_tail_diagnostics/driver.py',
-    'paired_tail_diagnostics/engine.R','paired_tail_diagnostics/worker.R','paired_tail_diagnostics/README.md')))
+    'paired_tail_diagnostics/engine.R','paired_tail_diagnostics/worker.R','paired_tail_diagnostics/geometry.R',
+    'paired_tail_diagnostics/README.md')))
 LABELS={'p1e6','p1e5','bh_first','p5e5','p1e4','p1e3','p01','p05'}
 
 
@@ -110,27 +110,16 @@ def progress(p):
     return done,pending
 
 
-def report(p):
+def report(p, rscript='Rscript', env=None):
     out=Path(p['output']);done,_=progress(p)
     if done!=len(p['scenarios'])*p['settings']['reps']:raise ValueError('Cannot summarize incomplete run')
-    groups={};flat=[];warnings=[];tails=[];strata=[];pairs=[];summary=[]
-    event_tmp=out/'tail_events.csv.gz.tmp'
-    with gzip.open(event_tmp,'wt',encoding='utf-8',newline='') as ef:
-        writer=None
-        for s in p['scenarios']:
-            for rep in range(1,p['settings']['reps']+1):
-                r=b.read(b.folder(p,s,rep)/'result.json')
-                warnings.extend(dict(scenario=s['id'],replicate=rep,message=w) for w in r['warnings'])
-                for a in r['metrics']:
-                    key=(s['id'],a['weight_mode'],a['test']);groups.setdefault(key,[]).append(a)
-                    row={k:v for k,v in a.items() if k not in {'tails','strata','p_histogram'}}
-                    row.update(scenario=s['id'],replicate=rep,seed=r['seed'])
-                    flat.append(row)
-                with gzip.open(b.folder(p,s,rep)/'events.csv.gz','rt',encoding='utf-8',newline='') as f:
-                    reader=csv.DictReader(f)
-                    if writer is None:writer=csv.DictWriter(ef,reader.fieldnames);writer.writeheader()
-                    writer.writerows(reader)
-    os.replace(event_tmp,out/'tail_events.csv.gz')
+    groups={};warnings=[];tails=[];strata=[];pairs=[];summary=[]
+    for s in p['scenarios']:
+        for rep in range(1,p['settings']['reps']+1):
+            r=b.read(b.folder(p,s,rep)/'result.json')
+            warnings.extend(dict(scenario=s['id'],replicate=rep,message=w) for w in r['warnings'])
+            for a in r['metrics']:
+                key=(s['id'],a['weight_mode'],a['test']);groups.setdefault(key,[]).append(a)
     for s in p['scenarios']:
         for arm,test in sorted(KEYS):
             a=groups[(s['id'],arm,test)]
@@ -175,20 +164,15 @@ def report(p):
                     low=delta-1.96*se if se is not None else None,high=delta+1.96*se if se is not None else None))
     for name,rows in [('summary.csv',summary),('tail_summary.csv',tails),('expression_strata.csv',strata),('paired_comparisons.csv',pairs)]:
         b.atomic_csv(out/name,rows)
-    with gzip.open(out/'replicate_metrics.csv.gz.tmp','wt',encoding='utf-8',newline='') as f:
-        w=csv.DictWriter(f,list(flat[0]));w.writeheader();w.writerows(flat)
-    os.replace(out/'replicate_metrics.csv.gz.tmp',out/'replicate_metrics.csv.gz')
+    b.run([rscript,'--vanilla',ROOT/'paired_tail_diagnostics/geometry.R',ROOT,
+           out/'protocol.json',out/'gaussian_geometry.csv'],out/'geometry.log',env or os.environ.copy())
     b.atomic_json(out/'warnings.json',warnings)
     b.atomic_json(out/'completion.json',dict(run_id=p['run_id'],status='complete',datasets=done,
-        method_rows=len(flat),warnings=len(warnings),scope='diagnostic controls, not a calibrated replacement test'))
+        method_rows=sum(map(len,groups.values())),warnings=len(warnings),scope='diagnostic controls, not a calibrated replacement test'))
     names=['protocol.json','environment.json','completion.json','summary.csv','tail_summary.csv','expression_strata.csv',
-        'paired_comparisons.csv','replicate_metrics.csv.gz','tail_events.csv.gz','warnings.json']
+        'paired_comparisons.csv','gaussian_geometry.csv','warnings.json']
     b.atomic_json(out/'review_manifest.json',{n:b.sha(out/n) for n in names})
-    with zipfile.ZipFile(out/'review_tail.zip.tmp','w',compression=zipfile.ZIP_DEFLATED) as z:
-        for n in names+['review_manifest.json']:z.write(out/n,n)
-        for n in FILES:z.write(ROOT/n,'source/'+n)
-    os.replace(out/'review_tail.zip.tmp',out/'review_tail.zip')
-    print('COMPLETE',done,'datasets\nREVIEW',out/'review_tail.zip',flush=True)
+    print('COMPLETE',done,'datasets; summary:',out/'summary.csv',flush=True)
 
 
 def main(argv=None):
@@ -223,7 +207,7 @@ def main(argv=None):
     source={n:b.sha(ROOT/n) for n in FILES}
     try:
         with b.output_lock(out):
-            print('NO DOWNLOADS; NO INSTALLS; ORIGINAL EXPERIMENTS UNCHANGED\nOUTPUT',out,flush=True)
+            print('TAIL CALIBRATION\nOUTPUT',out,flush=True)
             b.run([rs,'--vanilla',ROOT/'paired_count_calibration/worker.R','check',ROOT,out/'environment.check.json'],out/'preflight.log',env)
             observed=b.read(out/'environment.check.json');pin=b.read(ROOT/'inputs/R_versions.json')
             drift=observed['R']!=pin['R'] or any(observed['packages'][k]!=pin['packages'][k] for k in ('limma','edgeR'))
@@ -245,10 +229,9 @@ def main(argv=None):
                     controls=list(ARMS),selection='Six diagnostic scenarios selected after inspection of original grid; fresh replication seeds',
                     null='Global paired mean-contrast null; IID depth interpretation is marginal over resampled depths')
                 p['run_id']=b.identity(p);b.atomic_json(out/'protocol.json',p);b.atomic_json(out/'environment.json',observed)
-            if args.collect:report(p);return 0
+            if args.collect:report(p,rs,env);return 0
             done,pending=progress(p);total=len(p['scenarios'])*p['settings']['reps']
             print(f'VERIFIED {done}/{total}; six arms, two tests; workers={args.workers}',flush=True)
-            print(f'RESUME bash run_paired_tail_diagnostics.sh --resume --workers {args.workers} --output "{out}"'+(' --allow-version-drift' if drift else ''),flush=True)
             (out/'jobs').mkdir(exist_ok=True);jobs=[]
             for index,s,reps in pending:
                 for j in range(0,len(reps),3):
@@ -277,9 +260,13 @@ def main(argv=None):
             except BaseException:b.stop_children();raise
             finally:pool.shutdown(wait=True,cancel_futures=True)
             if any(b.sha(ROOT/n)!=h for n,h in source.items()):raise ValueError('Source changed; report withheld')
-            report(p)
+            report(p,rs,env)
     except KeyboardInterrupt:
         b.stop_children();print('Interrupted; completed datasets retained. Resume the same output.');return 130
     except Exception as e:
         b.stop_children();print('STOP:',e,flush=True);return 1
     return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

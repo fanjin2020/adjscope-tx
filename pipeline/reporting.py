@@ -183,8 +183,6 @@ class Exports:
         expected=publication.EXPECTED_BLOCKS
         require({r['block'] for r in rows} == expected, 'Unexpected workbook block identifiers')
         pd.DataFrame(rows).to_csv(self.root/'block_sources.csv', index=False)
-        from .workbook import generate as write_workbook
-        write_workbook(self.root)
         return index
 
 
@@ -391,13 +389,8 @@ def main(argv=None):
     dump(output/'status.json',dict(status='RUNNING',run_id=run_id))
     try:
         index = generate(root,output,supplements)
-        from .supplementary_figures import generate as draw
-        figures = draw(output)
         dump(output/'status.json',dict(status='RESULT_EXPORTS_COMPLETE',run_id=run_id,
-             files=len(index), sections=20, workbook_blocks_mapped=len(publication.EXPECTED_BLOCKS), supplementary_figures=len(figures),
-             workbook='Supplementary_Tables.xlsx', workbook_sha256=sha(output/'Supplementary_Tables.xlsx'),
-             reporting_version=publication.VERSION,
-             scope='Numeric source tables and 112-block workbook; manuscript agreement requires separate verification'))
+             files=len(index),scope='Internal numerical sources; final manuscript CSVs are exported by AdjScope-Tx.'))
     except BaseException as exc:
         dump(output/'status.json',dict(status='FAILED',run_id=run_id,reason=str(exc)))
         raise

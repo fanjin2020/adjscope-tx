@@ -7,8 +7,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import reproduce_from_public as launcher
-import run
+from adjscope_tx import environment as launcher
+from adjscope_tx import cli
+from pipeline import study_runner as run
 from pipeline import benchmark, configuration, core, matched
 
 
@@ -63,10 +64,10 @@ class ConfigurationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             self.write_config(root, analysis_version='obsolete-release')
-            with patch.object(launcher, 'ROOT', root), \
+            with patch.object(cli, 'ROOT', root), \
                  patch.object(launcher, 'select_python', side_effect=AssertionError('must not probe')):
                 with self.assertRaisesRegex(ValueError, 'Configuration version mismatch'):
-                    launcher.main(['--check-env', '--output', str(root / 'results')])
+                    cli.main(['run', '--check-env', '--output', str(root / 'results')])
             self.assertFalse((root / 'results').exists())
 
     def test_direct_runner_checks_before_commands_and_output(self):
@@ -96,10 +97,11 @@ class ConfigurationTests(unittest.TestCase):
     def test_check_env_includes_configuration(self):
         with patch.object(launcher, 'select_python', return_value=(Path('/existing/python'), {})), \
              patch.object(launcher, 'select_r', return_value=('Rscript', [], {})), \
+             patch.object(configuration, 'load_config', wraps=configuration.load_config) as check, \
              contextlib.redirect_stdout(io.StringIO()) as output:
-            self.assertEqual(launcher.main(['--check-env']), 0)
-        self.assertIn('CONFIG ' + configuration.VERSION, output.getvalue())
-        self.assertIn('"analysis_version": "' + configuration.VERSION + '"', output.getvalue())
+            self.assertEqual(cli.main(['run','--check-env','--output',str(Path(tempfile.gettempdir())/'p1_env_check')]), 0)
+        check.assert_called_once()
+        self.assertEqual(set(json.loads(output.getvalue())), {'python','R'})
 
 
 if __name__ == '__main__':

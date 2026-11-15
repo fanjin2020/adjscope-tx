@@ -18,14 +18,13 @@ import sys
 import threading
 import time
 import uuid
-import zipfile
 from . import VERSION
 
 ROOT = Path(__file__).resolve().parent.parent
-FILES = ('paper1_paired_count.py', 'run_paired_count_calibration.sh',
+FILES = ('run.py', 'adjscope_tx/cli.py', 'adjscope_tx/workflow.py',
          'paired_count_calibration/__init__.py', 'paired_count_calibration/driver.py',
          'paired_count_calibration/engine.R', 'paired_count_calibration/worker.R',
-         'paired_count_calibration/plot.R', 'analysis/common.R',
+         'analysis/common.R',
          'analysis/matched/functions.R', 'inputs/R_versions.json')
 KEYS = {(w, t) for w in ('shared', 'design_specific') for t in ('model_based', 'HC3')}
 CHILDREN, GUARD, STOP = set(), threading.Lock(), threading.Event()
@@ -255,17 +254,13 @@ def collect(p, env, rscript):
     expected = len(p['scenarios'])*p['settings']['reps']
     if complete != expected:
         raise ValueError(f'Cannot report complete results: {complete}/{expected} verified')
-    rows, warnings, histograms, grouped = [], [], [], {}
+    warnings, grouped = [], {}
     for s in p['scenarios']:
         for rep in range(1, p['settings']['reps']+1):
             r = read(folder(p,s,rep)/'result.json')
             for message in r['warnings']:
                 warnings.append(dict(scenario=s['id'],replicate=rep,message=message))
             for a in r['metrics']:
-                row = {k:v for k,v in a.items() if k!='p_histogram'}
-                row.update(scenario=s['id'],replicate=rep,seed=r['seed'],n=s['n'],rho=s['rho'],
-                           depth=s['depth'],exposure_fraction=s['exposure_fraction'])
-                rows.append(row)
                 grouped.setdefault((s['id'],a['weight_mode'],a['test']),[]).append(a)
     summary = []
     for s in p['scenarios']:
@@ -284,30 +279,16 @@ def collect(p, env, rscript):
                     row[key] = events/len(a)
                     row[key+'_ci_low'], row[key+'_ci_high'] = wilson(events,len(a))
             summary.append(row)
-            for j in range(20):
-                histograms.append(dict(scenario=s['id'],weight_mode=mode,test=test,
-                    lower=j*.05,upper=(j+1)*.05,count=sum(x['p_histogram'][j] for x in a)))
     atomic_csv(out/'summary.csv',summary)
-    atomic_csv(out/'replicate_metrics.csv',rows)
-    atomic_csv(out/'pvalue_histogram.csv',histograms)
     atomic_json(out/'warnings.json',warnings)
-    run([rscript,'--vanilla',ROOT/'paired_count_calibration/plot.R',out],out/'plots.log',env)
     atomic_json(out/'completion.json',dict(run_id=p['run_id'],datasets=complete,
         status='complete',scope='global paired-contrast null; no non-null power or strong-FDR claim',
         validation_only=p['settings']['profile']!='full',warnings=len(warnings)))
-    names = ['protocol.json','environment.json','completion.json','summary.csv','replicate_metrics.csv',
-             'pvalue_histogram.csv','warnings.json','paired_FDR.pdf','paired_coverage.pdf','plots.log']
+    names = ['protocol.json','environment.json','completion.json','summary.csv','warnings.json']
     if p['parameter_file']:
         names.append('parameters.csv')
     atomic_json(out/'review_manifest.json',{n:sha(out/n) for n in names})
-    with zipfile.ZipFile(out/'review.zip.tmp','w',compression=zipfile.ZIP_DEFLATED) as z:
-        for n in names+['review_manifest.json']:
-            z.write(out/n,n)
-        z.write(ROOT/'paired_count_calibration/README.md','METHODS.md')
-        for n in FILES:
-            z.write(ROOT/n,'source/'+n)
-    os.replace(out/'review.zip.tmp',out/'review.zip')
-    print('COMPLETE',complete,'datasets\nREVIEW',out/'review.zip',flush=True)
+    print('COMPLETE',complete,'datasets; summary:',out/'summary.csv',flush=True)
 
 
 def libraries(explicit):
@@ -375,7 +356,7 @@ def main(argv=None):
     source={n:sha(ROOT/n) for n in FILES}
     try:
         with output_lock(out):
-            print('NO DOWNLOADS; NO PACKAGE INSTALLS; ORIGINAL RESULTS UNCHANGED\nOUTPUT',out,flush=True)
+            print('COUNT CALIBRATION\nOUTPUT',out,flush=True)
             run([rscript,'--vanilla',ROOT/'paired_count_calibration/worker.R','check',ROOT,out/'environment.check.json'],
                 out/'preflight.log',env)
             observed=read(out/'environment.check.json')
@@ -428,8 +409,6 @@ def main(argv=None):
             done,pending=progress(p)
             total=len(p['scenarios'])*p['settings']['reps']
             print(f'VERIFIED {done}/{total}; workers={args.workers}; genes={p["settings"]["genes"]}',flush=True)
-            print(f'RESUME bash run_paired_count_calibration.sh --resume --output "{out}" --workers {args.workers}'+
-                  (' --allow-version-drift' if mismatch else ''),flush=True)
             batches=[]
             (out/'jobs').mkdir(exist_ok=True)
             for index,s,reps in pending:
@@ -484,3 +463,7 @@ def main(argv=None):
         print('STOP:',e,file=sys.stderr)
         return 1
     return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

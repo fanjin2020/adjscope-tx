@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import run
+from pipeline import study_runner as run
 from pipeline import benchmark, matched
 
 
@@ -15,7 +15,7 @@ class WorkflowTests(unittest.TestCase):
         args=run.parser().parse_args(['--output','/tmp/paper1','--workers','60','--raw-cache','/tmp/data'])
         jobs=run.commands(args)
         self.assertEqual([j[2] for j in jobs],['pipeline.core','pipeline.matched','pipeline.benchmark',
-                                             'pipeline.supplementary.driver','pipeline.figures','pipeline.reporting'])
+                                             'pipeline.supplementary.driver','pipeline.reporting'])
         self.assertIn('all',jobs[0])
         self.assertIn('--raw-cache',jobs[0])
         self.assertNotIn('--resume',jobs[0])
