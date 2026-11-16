@@ -5,11 +5,15 @@ type: software
 license: MIT
 version: 3.3.0
 date-released: 2026-11-11
+repository-code: "https://github.com/fanjin2020/adjscope-tx"
+doi: "10.5281/zenodo.24244556"
 authors:
   - family-names: Fan
     given-names: Jin
   - family-names: Liu
     given-names: Chang
+  - family-names: Cao
+    given-names: Ying
   - family-names: Zhang
     given-names: Xiankun
   - family-names: Song
