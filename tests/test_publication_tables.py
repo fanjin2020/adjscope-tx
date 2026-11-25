@@ -11,6 +11,21 @@ from pipeline import publication_tables as P
 
 
 class PublicationTests(unittest.TestCase):
+    def test_reader_notes_preserve_protocol_values_and_apply_to_replays(self):
+        from pipeline.publication_text import DOWNLOAD_NOTE, JOB_NOTE, SEA_DFC_SOURCE, publication_notes
+        resources = P.resource_catalog()
+        frozen = resources.copy()
+        frozen['input_specification'] = frozen.input_specification.str.replace(
+            DOWNLOAD_NOTE, 'Input definitions and download code: public release v2.1.0.', regex=False)
+        frozen.loc[frozen.resource.eq('SEA-AD'), 'public_source'] = 'https://brain-map.org/consortia/sea-ad'
+        pd.testing.assert_frame_equal(publication_notes('S1.2', frozen), resources)
+        self.assertTrue(resources.input_specification.str.endswith(DOWNLOAD_NOTE).all())
+        self.assertEqual(resources.loc[resources.resource.eq('SEA-AD'),'public_source'].item(), SEA_DFC_SOURCE)
+        raw = pd.DataFrame(dict(path=['/jobs','/scientific/version'],value=['old label','2.1.0']))
+        for section in ('S17.7','S20.7'):
+            self.assertEqual(publication_notes(section,raw).value.tolist(),[JOB_NOTE,'2.1.0'])
+        self.assertEqual(raw.value.tolist(),['old label','2.1.0'])
+
     def test_native_and_shared_factors_are_distinct(self):
         raw=pd.DataFrame(dict(spec=['s','s'],gene_symbol=['g','g'],branch=['baseline','cage_fixed'],
             beta_direct=[1.,2.],SE_direct_ordinary=[2.,6.],unscaled_direct=[1.,2.]))

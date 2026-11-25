@@ -221,17 +221,42 @@ class FrameworkTests(unittest.TestCase):
     def test_all_figures_in_public_default(self):
         self.assertEqual(set(plotting.FIGURES),{str(i) for i in range(1,11)}|{'S'+str(i) for i in range(1,16)})
 
-    def test_publication_export_csv_only_and_98_sections(self):
-        from adjscope_tx.publication import Bundle
+    def test_cmpb_publication_tables_and_workbook(self):
+        from openpyxl import load_workbook
+        from adjscope_tx.publication import Bundle, ARCHIVE_SCHEMA
         with contextlib.redirect_stdout(io.StringIO()):
             output=reports.export_publication(self.root/'publication')
         bundle=Bundle(output).verify()
         tables=[e for e in bundle.entries if e['kind']=='table']
-        self.assertEqual(len(tables),98)
-        self.assertEqual(sum(int(e['rows']) for e in tables),15848)
+        self.assertEqual(len(ARCHIVE_SCHEMA['tables']),98)
+        self.assertEqual(len(tables),100)
+        self.assertEqual(sum(int(e['rows']) for e in tables),15853)
         self.assertEqual(len(list((output/'tables').glob('*.csv'))),26)
         self.assertEqual(len(bundle.figures()),25)
-        self.assertTrue(all(p.suffix=='.csv' for p in output.rglob('*') if p.is_file()))
+        path=output/'Supplementary_Tables.xlsx'
+        self.assertEqual({p for p in output.rglob('*') if p.is_file() and p.suffix!='.csv'},{path})
+        wb=load_workbook(path,read_only=True)
+        try:
+            self.assertEqual(wb.sheetnames,['Catalogue']+[f'S{n:02d}' for n in range(1,24)])
+            catalog={r[0]:r[1:5] for r in wb['Catalogue'].iter_rows(min_row=4,max_col=6,values_only=True)}
+            self.assertEqual(catalog['S9.5'],('S09',57,2,7))
+            self.assertEqual(catalog['S11.7'],('S11',5093,3,5))
+            self.assertEqual(catalog['S22.1'],('S22',5,96,20))
+            for key in ('S9.5','S11.7'):
+                sheet,header,rows,cols=catalog[key]
+                xf=list(wb[sheet].iter_rows(min_row=header,max_row=header+rows,max_col=cols,values_only=True))
+                source=bundle.read('table',key)
+                self.assertEqual(list(xf[0]),list(source))
+                for a,b in zip(xf[1:],source.itertuples(index=False,name=None)):
+                    for x,y in zip(a,b):
+                        if isinstance(y,float): self.assertAlmostEqual(x,y,places=14)
+                        else: self.assertEqual(x,y)
+        finally:
+            wb.close()
+        with path.open('ab') as f:
+            f.write(b'tampered')
+        with self.assertRaisesRegex(ValueError,'workbook changed'):
+            Bundle(output).verify()
 
     def test_relative_paths_are_resolved_before_subprocess_changes_directory(self):
         c=workflow.WorkflowConfig(self.root/'planned',stages=('design',),data_work=Path('prepared'),
