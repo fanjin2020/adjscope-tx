@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from .io import require
+from .publication_text import DOWNLOAD_NOTE, SEA_DFC_SOURCE
 from .supplementary.common import reserved_bh
 
 VERSION = 'publication_exports_20261026_v3'
@@ -275,8 +276,8 @@ def resource_catalog():
         spec = ('DFC RNA-seq final-nuclei release 2026-06-22.' if sea else 'GEO accession '+accession+'.')
         rows.append(dict(resource=accession, analysis_role=role,
             relationship='primary' if accession in ('SEA-AD','GSE233208') else ('panel_selection' if accession=='GSE118553' else 'supplementary'),
-            public_source='https://brain-map.org/consortia/sea-ad' if sea else 'https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc='+accession,
-            input_specification=spec+' Input definitions and download code: public release v2.1.0.'))
+            public_source=SEA_DFC_SOURCE if sea else 'https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc='+accession,
+            input_specification=spec+' '+DOWNLOAD_NOTE))
     return pd.DataFrame(rows)
 
 
