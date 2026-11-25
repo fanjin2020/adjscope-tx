@@ -10,7 +10,8 @@ Explicit `--study`, `--design`, `--counts` and `--tails` accept completed source
 | Path | Contents |
 | --- | --- |
 | tables/Table1.csv ... Table3.csv | Main-paper overview, diagnostic actions and testing families; quantities derived from current summaries |
-| tables/TableS1.csv ... TableS23.csv | 98 manuscript sections combined by table number |
+| tables/TableS1.csv ... TableS23.csv | 100 CMPB supplementary sections combined by table number |
+| Supplementary_Tables.xlsx | Complete export only: Catalogue plus S01-S23, generated from the same section frames |
 | figure_data/*.csv | Eight independent plot inputs; all other plot inputs are explicit views of table sections |
 | manifest.csv | Section/figure mapping, columns, types, row counts and SHA256 fingerprints |
 
@@ -20,7 +21,7 @@ S2.1 is the reported threshold-crossing union; S4.1 includes the prespecified
 display set and the two reported paired-test threshold unions. Full-family
 adjusted p-values are retained, never recalculated after display selection.
 
-The full export has exactly 35 CSV files: 3 main tables, 23 supplementary tables,
+Alongside the workbook, the full export has 35 CSV files: 3 main tables, 23 supplementary tables,
 8 additional figure datasets and one manifest. S20.7 aliases S17.7; its rows are
 stored once, with both table IDs retained. Explicit schema projections, not
 floating-point equality, determine which files exist. Missing sections and
@@ -28,22 +29,21 @@ undeclared files are errors, even if their manifest entries have also been remov
 Partial workflows export only selected stages. Dataset counts in rows apply to
 that run; a smoke or pilot run is not publication evidence.
 
-`inputs/publication.json` is the machine-readable schema for tables and figures.
-Both computed results and `--kind publication` replay use it. Replay is labeled
+`inputs/publication.json` defines the original tables and figures; `adjscope_tx/cmpb_sections.py`
+adds S9.5 and S11.7. Both computed results and `--kind publication` replay use these definitions. Replay is labeled
 `recorded_publication_evidence`; new calculation exports are labeled
 `computed_results`. Missing calculation inputs never fall back to the replay.
 
 Raw matrices, task-level metrics, logs, receipts and source snapshots stay in the
 run directory for computation and resume. They are not copied into the CSV bundle.
-No workbook, per-replicate export, narrative report or review archive is generated.
+No per-replicate export, narrative report or review archive is generated.
 
 ## Submission correspondence
 
-Main Tables 1-3 are the three main-table CSVs. Supplementary methods (ESM_1)
-are authored text; its 15 figures are generated below. The 98 sections of ESM_2
-are fully represented by the supplementary CSVs and manifest, without exporting
-a redundant workbook. ESM_3 is the framework release archive. The calculation
-pipeline does not rewrite the manuscript or reuse old narrative as a new result.
+The CMPB workbook contains 100 sections (15,853 rows in the recorded evidence, including
+the declared S20.7 alias). Its S22.1 presentation omits the planned gene-count field
+used by the figure code; that field remains in the CSV. The original main-table and
+figure mappings are unchanged. No Word manuscript or supplementary methods text is rewritten.
 
 ## Figures
 
