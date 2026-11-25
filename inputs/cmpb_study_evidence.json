@@ -1,0 +1,27 @@
+{
+  "188_design_status.csv": {
+    "sha256": "7f65790dfe06ddbc39aa1de7567a333e914bdb2748bd1bbaadc620bb8459b0bf",
+    "columns": ["region", "model", "status", "AD", "control"],
+    "rows": [
+      ["entorhinal_cortex", "overlap_log2_linear", "tested", 15, 7],
+      ["frontal_cortex", "overlap_log2_linear", "tested", 21, 18]
+    ]
+  },
+  "190_endpoint_summary.csv": {
+    "sha256": "2472f682567ebadaee3db51cc9f5a9718041d4325e05ef22f14491706d7d46a7",
+    "columns": ["region", "model", "tested", "same", "significant_same", "significant_opposite"],
+    "rows": [
+      ["entorhinal_cortex", "overlap_log2_linear", 3040, 1758, 2, 0],
+      ["frontal_cortex", "overlap_log2_linear", 199, 123, 0, 0]
+    ]
+  },
+  "doublet_libraries.csv": {
+    "sha256": "9416d310b4aa8f3da835524631c2eafb0a861e8f9a05a0cc72d71d7b06f80016",
+    "columns": ["gsm", "seed", "status", "qc_cells", "predicted_doublets", "predicted_fraction"],
+    "rows": [
+      ["GSM6911563", 290, "completed_risk_screen_not_doublet_truth", 2830, 1658, 0.5858657243816254],
+      ["GSM6911564", 290, "completed_risk_screen_not_doublet_truth", 802, 655, 0.816708229426434],
+      ["GSM6911565", 290, "completed_risk_screen_not_doublet_truth", 3753, 2760, 0.7354116706634692]
+    ]
+  }
+}
