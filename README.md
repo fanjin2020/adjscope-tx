@@ -105,9 +105,12 @@ python run.py report --kind publication --output "$HOME/adjscope/p1_tables"
 python run.py figures --source "$HOME/adjscope/p1_tables" --output "$HOME/adjscope/p1_figures"
 ```
 
-These commands use supplied, checksum-verified evidence: **3 main tables,
-98 supplementary sections, 10 main figures and 15 supplementary figures**. They perform no new fits.
-The fixed evidence snapshot is identified in PUBLICATION_VERSION.json. Its
+The full report writes **Supplementary_Tables.xlsx** (CMPB: S1-S23, 100 sections)
+beside the manuscript CSVs. S9.5 gives the two GSE48350 regional summaries;
+S11.7 gives the three prespecified GSE222007 library screens at seed 290.
+The three main-table CSVs and the 10 main/15 supplementary figure mappings
+retain the original release numbering. Replay performs no new fits.
+The original 98-section evidence snapshot is identified in PUBLICATION_VERSION.json. Its
 manifest is labeled `recorded_publication_evidence`; new calculations are
 labeled `computed_results`. Both use the same export layout and figure mapping.
 

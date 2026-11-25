@@ -67,7 +67,8 @@ python run.py figures --source "$HOME/adjscope/p1_results" --output "$HOME/adjsc
 ## 默认输出
 
 - `tables/Table1.csv` 至 `Table3.csv`：正文三张表，数量从当前结果汇总，解释文字遵循论文方案。
-- `tables/TableS1.csv` 至 `TableS23.csv`：98个论文表格区块，用 `section` 列区分。
+- `tables/TableS1.csv` 至 `TableS23.csv`：100个补表区块，用 `section` 列区分。
+- `Supplementary_Tables.xlsx`：完整导出时生成的 CMPB 投稿补表，共24张工作表（含目录）。
 - `figure_data/*.csv`：表格之外必需的绘图数据，已在表格中的相同数据不重复导出。
 - `manifest.csv`：表号、图号、文件、列类型、记录数、来源和校验值的统一映射。
 
@@ -75,15 +76,15 @@ python run.py figures --source "$HOME/adjscope/p1_results" --output "$HOME/adjsc
 图表复用关系由论文清单明确规定，不再由浮点数是否完全相等决定。
 S20.7与S17.7是同一份运行配置，清单保留两个表号，数值仅保存一份。
 缺少阶段时只导出对应内容；缺表、清单漏项和未登记文件都会停止核验。
-不导出逐次模拟明细、历史报告、自动解释文稿、重复Excel或审阅ZIP。
+不导出逐次模拟明细、历史报告、自动解释文稿或审阅ZIP。
 断点所需任务、日志和源数据仍保留在运行目录，不进入 `results/`。
 
 全量运行默认在 `figures/` 输出10张主图和15张补图的PDF，以及2个环境和版面核验文件。
 单独重绘时，`figures` 命令可加 `--tiff` 生成600 dpi TIFF，或加 `--editable` 生成SVG/PNG。
 
-补充材料对应关系：ESM_1的补图由 `figures` 生成，方法说明仍是作者撰写的投稿文档；
-ESM_2的98个表格区块由上述CSV及清单完整提供，不再额外导出一份重复Excel；
-ESM_3使用本框架发布压缩包。框架不自动改写主稿或补充方法正文。
+CMPB 补表在旧版98个区块上增加 S9.5（GSE48350 两个脑区）和 S11.7（GSE222007 三个指定文库，种子290）。
+计算结果模式从该次 study 的 bulk 完成回执及文库筛查 CSV 读取；缺少数据时停止，不拿归档结果补行。
+论文复现模式使用带校验的原始结果摘录。旧归档、正文表和图号映射未被替换；程序不改写 Word 或补充方法。
 
 ## 论文固定数值复现
 
