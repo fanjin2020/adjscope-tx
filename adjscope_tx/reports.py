@@ -3,7 +3,7 @@ from pathlib import Path
 import time
 
 from .storage import read_json, sha256, write_json, separate_output, output_lock, source_files, source_digest
-from .publication import Bundle, Computed, Snapshot, write_bundle, safe_path
+from .publication import Bundle, Computed, Snapshot, write_bundle, safe_path, schema_digest
 
 
 def workflow_sources(source, *, finalizing=False):
@@ -24,6 +24,8 @@ def index_workflow(output):
     provider = Computed(sources, record['specification']['rscript'])
     if result.exists():
         bundle = Bundle(result).verify(expected_stages=sources)
+        if bundle.entry('contract', 'publication')['input_sha256'] != schema_digest():
+            raise ValueError('Existing results use the archived table schema. Use report with a new output directory.')
         for entry in bundle.entries:
             if entry['kind'] == 'input':
                 stage, relative = entry['id'].split('/',1)
@@ -32,7 +34,7 @@ def index_workflow(output):
     else:
         write_bundle(provider, result)
     files = [dict(file=p.relative_to(output).as_posix(),sha256=sha256(p),bytes=p.stat().st_size)
-             for p in sorted(result.rglob('*.csv'))]
+             for p in sorted(result.rglob('*')) if p.is_file()]
     write_json(output/'results.json', dict(kind='computed_results',source_sha256=record['source_sha256'],files=files))
     return files
 
@@ -88,7 +90,7 @@ def finish_existing_workflow(output, *, python=None, analysis_source_manifest=No
             raise ValueError('CSV export belongs to a different analysis source')
         expected = export_record['files']
         names = [item['file'] for item in expected]
-        actual = {p.relative_to(output).as_posix() for p in source.rglob('*.csv')}
+        actual = {p.relative_to(output).as_posix() for p in source.rglob('*') if p.is_file()}
         if not names or len(names) != len(set(names)) or set(names) != actual:
             raise ValueError('CSV export receipt is incomplete')
 

@@ -1,0 +1,102 @@
+"""Render the same section frames used for the CSVs as the submission workbook."""
+import numpy as np
+import pandas as pd
+
+
+FILENAME = 'Supplementary_Tables.xlsx'
+TITLES = (
+    'Resources and eligibility', 'Human discovery-associated coefficients', 'Human threshold transitions',
+    'Paired coefficient changes', 'Age and quality diagnostics', 'Quality-model variants',
+    'Human design diagnostics', 'Astrocyte candidate estimates', 'Supplementary resource focal estimates',
+    'Cognition associations', 'Cell-class and mixture checks', 'Mouse model summaries',
+    'Mouse consistency and examples', 'Mouse precision decomposition', 'Cage variance and precision',
+    'Design approximation checks', 'Five-model grouped-data simulation', 'Supplementary simulations',
+    'Cage allocation geometry', 'Paired-test and count-pipeline calibration', 'Design-geometry benchmark',
+    'Complete count calibration of paired differences', 'Extreme-tail controls and variance geometry',
+)
+NOTES = {
+    'S11.1': ('Ast\u2013Oli and Ast\u2013Opc each used 19 matched donors (9 AD, 10 controls).',
+              'Ast\u2013Oli and Ast\u2013Opc each include 9 AD and 10 control donors (19 matched donors per comparison).'),
+    'S13.1': ('Counts use a single joint BH family: six specifications \u00d7 two models (baseline and cage fixed '
+              'effects) \u00d7 237 planned genes = 2,844.',
+              'joint BH family = six specifications \u00d7 two models \u00d7 237 planned genes (2,844 tests).'),
+    'S14.4': ('significant_method_family: 1,422 tests per model across six specifications; significant_spec_family: '
+              '237 tests per model and specification.',
+              'BH correction covers 1,422 planned tests per model or 237 per model and specification.'),
+}
+
+
+def section_scope(entry, frame):
+    key, scope = entry['id'], entry['scope']
+    if key in NOTES:
+        return scope + ' ' + NOTES[key][0]
+    if key == 'S22.1' and len(frame) == 96 and frame.scenario.nunique() == 24 and frame.datasets.eq(1000).all():
+        return 'All 24 count-grid scenarios, two weight policies and two tests; 1,000 datasets per scenario.'
+    if key == 'S23.1' and len(frame) == 72 and frame.scenario.nunique() == 6 and frame.datasets.eq(500).all():
+        return 'All six targeted scenarios, six arms and two tests; 500 datasets per scenario.'
+    if key == 'S23.2' and len(frame) and np.allclose(frame.cutoff, .05/3000, rtol=1e-12, atol=0):
+        return 'All arm-test marginal tail summaries at 0.05/3000; rates use available tests.'
+    return scope
+
+
+def write_workbook(path, sections, entries):
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    cat = wb.active
+    cat.title = 'Catalogue'
+    bold = Font(name='Calibri', bold=True)
+    wrap = Alignment(vertical='center', wrap_text=True)
+    cat['A1'] = 'Supplementary Tables S1-S23'
+    cat['A1'].font = bold
+    cat.append([])
+    cat.append(('Section', 'Worksheet', 'Header row', 'Records', 'Columns', 'Scope'))
+    for c in cat[3]:
+        c.font = bold
+    for j, width in enumerate((13, 15, 14, 12, 12, 95), 1):
+        cat.column_dimensions[get_column_letter(j)].width = width
+    cat.freeze_panes = 'A4'
+    next_row = {}
+    for n, title in enumerate(TITLES, 1):
+        sheet = wb.create_sheet(f'S{n:02d}')
+        sheet['A1'] = f'Table S{n} {title}'
+        sheet['A1'].font = bold
+        sheet['A2'] = ('Blank numeric cells represent unavailable values.' if n < 22 else
+                       'Rates are proportions; all paired differences are null. Planned and retained families are separate.')
+        sheet.freeze_panes = 'A4'
+        next_row[sheet.title] = 4
+    for entry in entries:
+        key = entry['id']
+        f = sections[key]
+        # The planned gene count is needed by the plots, but is not a column of manuscript Table S22.1.
+        if key == 'S22.1':
+            f = f.drop(columns='genes')
+        sh = wb[f"S{int(key[1:].split('.')[0]):02d}"]
+        start = next_row[sh.title]
+        sh.cell(start, 1, key).font = bold
+        if key in NOTES:
+            sh['A3'] = key + ': ' + NOTES[key][1]
+        for j, col in enumerate(f.columns, 1):
+            c = sh.cell(start+1, j, col)
+            c.font, c.alignment = bold, wrap
+            dim = sh.column_dimensions[get_column_letter(j)]
+            dim.width = max(dim.width, min(55, len(col)+3), 20 if j == 1 else 13)
+        sh.row_dimensions[start+1].height = 31
+        for i, row in enumerate(f.itertuples(index=False, name=None), start+2):
+            for j, v in enumerate(row, 1):
+                if pd.isna(v):
+                    continue
+                c = sh.cell(i, j, v.item() if isinstance(v, np.generic) else v)
+                if isinstance(v, str):
+                    c.data_type = 's'
+                if key == 'S11.7' and j == 5:
+                    c.number_format = '0.00%'
+        cat.append((key, sh.title, start+1, len(f), len(f.columns), section_scope(entry, f)))
+        cat.cell(cat.max_row, 6).alignment = wrap
+        cat.row_dimensions[cat.max_row].height = 42
+        next_row[sh.title] = start + len(f) + 4
+    cat.auto_filter.ref = f'A3:F{cat.max_row}'
+    wb.save(path)
+    wb.close()

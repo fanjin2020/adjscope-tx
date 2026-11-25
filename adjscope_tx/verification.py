@@ -1,6 +1,6 @@
 """Verify compact publication evidence; no downloads or model fitting."""
 from pathlib import Path
-from .publication import Bundle
+from .publication import Bundle, Snapshot, cmpb
 
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -10,7 +10,8 @@ def rows(name):
 
 
 def main():
-    bundle=Bundle(ROOT/'inputs/evidence').verify()
+    snapshot=Snapshot()
+    bundle=snapshot.bundle
     tables=[e for e in bundle.entries if e['kind']=='table']
     inputs=[e for e in bundle.entries if e['kind']=='figure_data']
     for key, dimension, expected, repetitions in [('S22.1','weight_mode',96,1000),('S23.1','arm',72,500)]:
@@ -40,7 +41,10 @@ def main():
         data=rows(filename)
         if len(data)!=n or len({(r['design'],r['scenario'],r['model']) for r in data})!=n:
             raise ValueError('Design benchmark grid is incomplete: '+filename)
-    print('Verified',len(tables),'table sections and',len(inputs),'figure inputs')
+    added=[snapshot.table({'id':key}) for key in cmpb.EXTRA]
+    snapshot.verify_unchanged()
+    print('Verified',len(tables),'archived sections +',len(added),'CMPB sections',
+          f'({sum(map(len,added))} additional records);',len(inputs),'figure inputs')
     print('Held-out: 16 eligible, 8 unsupported, 8 structurally non-estimable')
     print('Figures: 10 main and 15 supplementary; no model fitting performed')
 

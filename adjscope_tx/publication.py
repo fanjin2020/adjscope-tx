@@ -9,10 +9,17 @@ import tempfile
 
 import numpy as np
 import pandas as pd
+from pipeline.publication_text import publication_notes
 
 from .storage import ROOT, read_json, separate_output, sha256
+from . import cmpb_sections as cmpb
+from . import supplement_workbook as supplement
 
-SCHEMA = read_json(ROOT / 'inputs/publication.json')
+ARCHIVE_SCHEMA = read_json(ROOT / 'inputs/publication.json')
+ALL_STAGES = {'study', 'design', 'counts', 'tails'}
+SCHEMA = {**ARCHIVE_SCHEMA, 'supplementary_workbook': supplement.FILENAME,
+          'cmpb_evidence_digest': cmpb.EVIDENCE_DIGEST,
+          'tables': ARCHIVE_SCHEMA['tables'] + [dict(id=k, stage='study', **v) for k, v in cmpb.EXTRA.items()]}
 DESIGN = ('design_diagnostics', 'empirical_design_diagnostics', 'gaussian_summary',
           'counts_summary', 'gaussian_paired_mean_shift', 'counts_paired_mean_shift',
           'heldout_rule_evaluation', 'analytic_sensitivity')
@@ -23,9 +30,9 @@ MANIFEST_FIELDS = ('kind', 'id', 'file', 'section', 'columns', 'types', 'rows', 
                    'figures', 'source', 'input_sha256', 'scope')
 
 
-def schema_digest():
+def schema_digest(schema=None):
     import hashlib
-    return hashlib.sha256(json.dumps(SCHEMA, sort_keys=True).encode()).hexdigest()
+    return hashlib.sha256(json.dumps(SCHEMA if schema is None else schema, sort_keys=True).encode()).hexdigest()
 
 
 def available_figures(stages):
@@ -84,7 +91,7 @@ class Computed:
     def read(self, stage, name):
         path = safe_path(self.sources[stage], name)
         self.track(stage, name, path)
-        return pd.read_csv(path, low_memory=False)
+        return pd.read_csv(path, low_memory=False, float_precision='round_trip')
 
     def block(self, section):
         if section not in self.blocks:
@@ -93,7 +100,21 @@ class Computed:
 
     def table(self, entry):
         section = entry['id']
-        if entry['stage'] == 'study':
+        if section == 'S9.5':
+            name = 'supplementary/bulk.complete.json'
+            receipt = safe_path(self.sources['study'], name)
+            self.track('study', name, receipt)
+            frames = []
+            for member, digest in cmpb.receipt_members(read_json(receipt)):
+                self.expected['study', member] = digest
+                frames.append(self.read('study', member))
+            frame = cmpb.bulk_summary(*frames)
+        elif section == 'S11.7':
+            name = 'reporting/S11/doublet_libraries.csv'
+            if ('study', name) not in self.expected:
+                raise ValueError('S11.7: library screen is missing from the study source index')
+            frame = cmpb.doublet_summary(self.read('study', name))
+        elif entry['stage'] == 'study':
             frame = self.block(section)
             if section == 'S2.1':
                 frame = frame[frame.q_joint_base.lt(.05) | frame.q_joint_quality.lt(.05)]
@@ -204,9 +225,18 @@ class Snapshot:
 
     def __init__(self):
         self.bundle = Bundle(ROOT/'inputs/evidence').verify()
-        self.tracked = {}
+        path = safe_path(ROOT, cmpb.EVIDENCE)
+        self.tracked = {cmpb.EVIDENCE: (path, sha256(path))}
+        evidence = read_json(path)
+        if schema_digest(evidence) != cmpb.EVIDENCE_DIGEST:
+            raise ValueError('CMPB recorded study evidence changed')
+        self.study_rows = {name: pd.DataFrame(v['rows'], columns=v['columns']) for name, v in evidence.items()}
 
     def table(self, entry):
+        if entry['id'] == 'S9.5':
+            return cmpb.bulk_summary(*(self.study_rows[k] for k in cmpb.BULK))
+        if entry['id'] == 'S11.7':
+            return cmpb.doublet_summary(self.study_rows['doublet_libraries.csv'])
         return self.get('table', entry['id'])
 
     def figure_data(self, entry):
@@ -236,7 +266,7 @@ def write_bundle(provider, output):
         for entry in SCHEMA['tables']:
             if entry['stage'] in provider.sources:
                 sections[entry['id']] = (sections[entry['alias']] if entry.get('alias') else
-                    select(provider.table(entry), entry['columns'], entry['id']))
+                    publication_notes(entry['id'], select(provider.table(entry), entry['columns'], entry['id'])))
         for entry in SCHEMA['figure_data']:
             if entry['stage'] in provider.sources:
                 frame = sections[entry['table']] if entry.get('table') else provider.figure_data(entry)
@@ -257,7 +287,8 @@ def write_bundle(provider, output):
             key = entry['id']
             if key in sections:
                 source = aliases.get(key, key)
-                record('table', key, sections[key], 'tables/Table'+source.split('.')[0]+'.csv', source, scope=entry['scope'])
+                record('table', key, sections[key], 'tables/Table'+source.split('.')[0]+'.csv', source,
+                       scope=supplement.section_scope(entry, sections[key]))
         for entry in SCHEMA['figure_data']:
             key = entry['id']
             if key not in plot_data:
@@ -271,12 +302,16 @@ def write_bundle(provider, output):
                 filename, section = 'figure_data/'+key+'.csv', ''
                 frame.to_csv(staging/filename, index=False)
             record('figure_data', key, frame, filename, section, ';'.join(entry['figures']))
-        if set(provider.sources) == {'study','design','counts','tails'}:
+        if set(provider.sources) == ALL_STAGES:
             from .paper_tables import main_tables
             for key, frame in main_tables(sections, plot_data, SCHEMA['main_tables']).items():
                 filename = 'tables/Table'+key+'.csv'
                 frame.to_csv(staging/filename, index=False)
                 record('main_table', key, frame, filename, scope='Main manuscript; derived from the same exported sections')
+            supplement.write_workbook(staging/supplement.FILENAME, sections, SCHEMA['tables'])
+            manifest.append(dict(kind='workbook', id='supplement', file=supplement.FILENAME,
+                rows=sum(map(len, sections.values())), sha256=sha256(staging/supplement.FILENAME),
+                source=provider.kind, scope='CMPB supplementary Tables S1-S23, including declared section aliases'))
         for figure in available_figures(provider.sources):
             needs = [e['id'] for e in SCHEMA['figure_data'] if figure in e['figures']]
             if all(key in plot_data for key in needs):
@@ -325,7 +360,7 @@ class Bundle:
         if digest != entry['sha256']:
             raise ValueError('Publication CSV changed: ' + entry['file'])
         if path not in self._frames or self._frames[path][0] != digest:
-            self._frames[path] = (digest, pd.read_csv(path, low_memory=False))
+            self._frames[path] = (digest, pd.read_csv(path, low_memory=False, float_precision='round_trip'))
         frame = self._frames[path][1]
         if entry['section']:
             frame = frame[frame.section.eq(entry['section'])]
@@ -352,14 +387,20 @@ class Bundle:
             raise ValueError('Invalid publication stages')
         if expected_stages is not None and stages != set(expected_stages):
             raise ValueError('Publication stages differ from the completed workflow')
-        if contract['input_sha256'] != schema_digest():
+        if contract['input_sha256'] == schema_digest():
+            schema = SCHEMA
+        elif contract['input_sha256'] == schema_digest(ARCHIVE_SCHEMA):
+            schema = ARCHIVE_SCHEMA
+        else:
             raise ValueError('Publication schema changed; export again to a new directory')
         expected = {('contract','publication')}
         for kind, group in (('table','tables'),('figure_data','figure_data')):
-            expected.update((kind,e['id']) for e in SCHEMA[group] if e['stage'] in stages)
+            expected.update((kind,e['id']) for e in schema[group] if e['stage'] in stages)
         expected.update(('figure',key) for key in available_figures(stages))
-        if stages == {'study','design','counts','tails'}:
-            expected.update(('main_table',e['id']) for e in SCHEMA['main_tables'])
+        if stages == ALL_STAGES:
+            expected.update(('main_table',e['id']) for e in schema['main_tables'])
+            if 'supplementary_workbook' in schema:
+                expected.add(('workbook','supplement'))
         actual = {(e['kind'],e['id']) for e in self.entries if e['kind'] != 'input'}
         if expected != actual:
             raise ValueError('Incomplete publication contract: missing '+str(sorted(expected-actual))+
@@ -369,7 +410,7 @@ class Bundle:
         if registered != present:
             raise ValueError('Unexpected or missing publication files: '+str(sorted(registered ^ present)))
         for kind, group in (('table','tables'),('figure_data','figure_data')):
-            for specification in SCHEMA[group]:
+            for specification in schema[group]:
                 if specification['stage'] not in stages:
                     continue
                 entry = self.entry(kind, specification['id'])
@@ -384,14 +425,19 @@ class Bundle:
             if entry['kind'] in ('table', 'figure_data', 'main_table'):
                 self.read(entry['kind'], entry['id'])
         for figure in self.figures():
-            for item in SCHEMA['figure_data']:
+            for item in schema['figure_data']:
                 if figure in item['figures']:
                     self.entry('figure_data', item['id'])
-        if stages == {'study','design','counts','tails'}:
+        if stages == ALL_STAGES:
             from .paper_tables import main_tables
-            sections = {e['id']:self.read('table', e['id']) for e in SCHEMA['tables']}
-            figures = {e['id']:self.read('figure_data', e['id']) for e in SCHEMA['figure_data']}
-            for key, frame in main_tables(sections, figures, SCHEMA['main_tables']).items():
+            sections = {e['id']:self.read('table', e['id']) for e in schema['tables']}
+            figures = {e['id']:self.read('figure_data', e['id']) for e in schema['figure_data']}
+            if 'supplementary_workbook' in schema:
+                x = self.entry('workbook', 'supplement')
+                if (x['file'] != schema['supplementary_workbook'] or sha256(safe_path(self.root, x['file'])) != x['sha256']
+                        or int(x['rows']) != sum(map(len, sections.values()))):
+                    raise ValueError('Supplementary workbook changed or has a stale row count')
+            for key, frame in main_tables(sections, figures, schema['main_tables']).items():
                 if not frame.equals(self.read('main_table', key)):
                     raise ValueError('Main table is stale: '+key)
         return self
