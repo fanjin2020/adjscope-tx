@@ -242,6 +242,14 @@ class FrameworkTests(unittest.TestCase):
             self.assertEqual(catalog['S9.5'],('S09',57,2,7))
             self.assertEqual(catalog['S11.7'],('S11',5093,3,5))
             self.assertEqual(catalog['S22.1'],('S22',5,96,20))
+            from adjscope_tx.supplement_workbook import workbook_value
+            self.assertEqual(workbook_value('S2.1','base_significant',False),'False')
+            self.assertEqual(workbook_value('S6.5','available',True),'TRUE')
+            self.assertIs(workbook_value('S1.2','another_flag',False),False)
+            self.assertEqual(workbook_value('S20.2','value','0.05'),.05)
+            self.assertEqual(workbook_value('S19.6','sample','211'),211)
+            self.assertEqual(workbook_value('S19.6','sample','0211'),'0211')
+            self.assertEqual(workbook_value('S19.6','sample','1234567890123456'),'1234567890123456')
             for key in ('S9.5','S11.7'):
                 sheet,header,rows,cols=catalog[key]
                 xf=list(wb[sheet].iter_rows(min_row=header,max_row=header+rows,max_col=cols,values_only=True))
