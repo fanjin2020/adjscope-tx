@@ -6,6 +6,29 @@ use this same order, defined in `inputs/publication.json`.
 
 ## Main Figures
 
+The numbering below is the archived layout. For the six CMPB main figures use
+`figures --layout cmpb`: 1, framework diagram; 2, clinical coefficients and
+joint BH transitions (S3.2, S3.5); 3, testing families (S3.6); 4, genotype
+inference (S20.10); 5, precision (S14.1, S16.4); 6, paired calibration
+(S23.1, S23.2). These are different plates, not renamed archive files.
+
+The CMPB supplement is a separate layout, `figures --layout cmpb-supplement`.
+S1-S8 and S10-S15 use the corresponding archived supplementary analyses.
+CMPB Fig. S9 uses Table S20.5 to compare three covariance treatments on the
+same 30 Gaussian designs; it does not use the archive's S9 framework diagram.
+S16-S20 use the analyses behind archive main Figs. 2, 3, 4, 7 and 9, respectively.
+The supplement receipt records the numerical input and checksum for each plate.
+
+The CMPB plates follow the manuscript captions:
+
+| Figure | Panel order |
+| --- | --- |
+| 2 | (a) Paired joint q values; (b) coefficients for all testable clinical records; (c) grouped bars for q-value intervals |
+| 3 | (a) All clinical discoveries by family; (b) records retained among the original 40, planned and available corrections |
+| 4 | (a) FDR; (b) power; (c) pointwise interval coverage. Each column fixes both latent cage SD and cage-mean amplitude. |
+| 5 | (a) SE ratios and their factors; (b) design-specific versus shared weights; (c) genotype sums of squares; (d) residual degrees of freedom. Only c and d are restricted to the whole section. |
+| 6 | (a) BH FDR; (b) Bonferroni FWER; (c) Gaussian coverage and FDR; (d) extreme-tail frequency. Circles represent model-based estimates and squares represent HC3. |
+
 | Figure | Comparison | Supplementary source |
 | --- | --- | --- |
 | 1 | Count-to-inference FDR, power and interval coverage | S20.10 |
