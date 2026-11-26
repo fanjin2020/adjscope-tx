@@ -66,6 +66,31 @@ same supplied CSV bundle and preserve manuscript figure numbering.
 Figures are published together after layout checks, so an interrupted renderer
 does not leave a partially completed final figure directory.
 
+## CMPB main figures
+
+For the CMPB main plates, use `python run.py figures --layout cmpb --source CSV_BUNDLE --output NEW_DIR`.
+Use an independent interpreter with `artwork/cmpb/requirements.txt` (select it via `--python` if necessary).
+The required input is one verified complete publication or workflow export. The six individual files
+`Figures/Figure_1.pdf` through `Figure_6.pdf` are the figure deliverables. The combined
+`All_Figures_Proof.pdf`, six PNGs in `Preview/` and `Checks/figure_audit.json` are for local review only.
+No model is refitted. The layout verifies the paper-specific numerical annotations and the minimum
+9 mm of white space above and below every figure. Existing output directories are not overwritten.
+
+## CMPB supplementary figures
+
+`python run.py figures --layout cmpb-supplement --source CSV_BUNDLE --output NEW_DIR`
+uses the same plotting environment and full export. It produces `Figure_S1.pdf`
+through `Figure_S20.pdf` and one `receipt.json` (input, renderer and output
+hashes, font, package versions and top/bottom blank bands in points).
+Fig. S9 is the paired-test comparison from S20.5, not the archived diagram.
+
+## Independent paired-test check
+
+`python run.py check-limma --output NEW_FILE.json` generates one receipt and
+no figure or gene table. It reports the two maximum absolute discrepancies, tolerance,
+software versions, input fingerprint and kernel hashes. The supplied reference
+receipt is the original locked server result, not a substitute for running the check.
+
 ## Optional user-data diagnostics
 
 `design`: summary.json and inputs.json.
