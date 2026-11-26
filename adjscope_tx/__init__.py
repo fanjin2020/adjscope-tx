@@ -1,7 +1,9 @@
 """Reusable diagnostics and reproducible workflows for transcriptomic adjustment."""
 
-__version__ = '3.3.0'
-__all__ = ['diagnose_design', 'compare_models', 'WorkflowConfig', 'run_workflow']
+__version__ = '3.4.0'
+__all__ = ['diagnose_design', 'compare_models', 'WorkflowConfig', 'run_workflow',
+           'randomization_test', 'contrast_direction', 'restricted_allocations',
+           'information_screen', 'wls_map']
 
 
 def diagnose_design(exposure, groups, covariates=None):
@@ -20,4 +22,8 @@ def __getattr__(name):
     if name in ('WorkflowConfig', 'run_workflow'):
         from . import workflow
         return getattr(workflow, name)
+    if name in ('randomization_test', 'contrast_direction',
+                'restricted_allocations', 'information_screen', 'wls_map'):
+        from . import randomization
+        return getattr(randomization, name)
     raise AttributeError(name)
