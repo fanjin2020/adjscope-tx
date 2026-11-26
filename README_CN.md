@@ -98,3 +98,22 @@ python run.py test
 `publication` 明确使用包内记录的论文结果，不代表重跑实验。
 API `diagnose_design` 和 `compare_models` 可用于自己的数据。
 全量科研复算要求锁定的Linux环境；本地可核验CSV、接口和图件。许可证：MIT。
+
+## 重绘 CMPB 投稿图
+
+使用上面生成的完整 `p1_evidence` 目录，或完整复跑后导出的 CSV 目录。先把 `PLOT_PYTHON` 设为满足[绘图环境要求](artwork/cmpb/requirements.txt)的 Python 路径，不用改变统计分析环境。两个输出目录都必须是新目录。
+
+```bash
+python run.py figures --layout cmpb --source "$HOME/adjscope/p1_evidence" --output "$HOME/adjscope/cmpb_main" --python "$PLOT_PYTHON"
+python run.py figures --layout cmpb-supplement --source "$HOME/adjscope/p1_evidence" --output "$HOME/adjscope/cmpb_supp" --python "$PLOT_PYTHON"
+```
+
+主图在 `cmpb_main/Figures/`。Fig. 1 保留原矢量流程图，由 Python 调整上下留白；Fig. 2–6 从 CSV 生成。20 张补图在 `cmpb_supp/`，全部由 Python 绘制。Fig. S9 使用表 S20.5，比较保留或忽略配对协方差时的拒绝率与功效。该步骤不重跑统计模型。省略 `--layout` 仍使用原归档图号。
+
+## 独立 limma 验证（补充方法 S11）
+
+```bash
+python run.py check-limma --output "$HOME/adjscope/paired_limma.json"
+```
+
+固定种子 213 生成 48 个样本、12 个基因，无须原始研究数据。用 AdjScope-Tx 和 R/limma 独立计算“扩展模型减基线模型”的系数差及其标准误，采用共享权重和未调节的模型方差，两项最大绝对误差都须小于 `1e-12`。默认核对研究环境后运行；非锁定环境可加 `--smoke`，其通过状态不计为正式复现。可用 `--rscript` 和可重复的 `--r-library` 指定已有 R 环境。不提供 `--output` 时只打印 JSON；不会覆盖已有回执。[服务器正式回执](validation/paired_limma_reference.json)仅供对照，不参与计算。

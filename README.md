@@ -119,6 +119,43 @@ Default figures are PDF. The optional `figures` command redraws a CSV bundle:
 --figures 1 10 S15 selects a subset.
 [Figure mapping](publication_figures/FIGURE_INDEX.md) | [Exact outputs](docs/OUTPUTS.md).
 
+## Reproduce the CMPB figures
+
+Use the complete CSV bundle from `report` above. Set `PLOT_PYTHON` to an
+interpreter matching the [plotting requirements](artwork/cmpb/requirements.txt);
+the statistical environment does not need to be changed. Choose new output directories.
+
+```bash
+python run.py figures --layout cmpb --source "$HOME/adjscope/p1_tables" --output "$HOME/adjscope/cmpb_main" --python "$PLOT_PYTHON"
+python run.py figures --layout cmpb-supplement --source "$HOME/adjscope/p1_tables" --output "$HOME/adjscope/cmpb_supp" --python "$PLOT_PYTHON"
+```
+
+The first command produces six individual PDFs under `cmpb_main/Figures/`.
+Fig. 1 preserves the supplied vector diagram and adds submission margins;
+Figs. 2-6 are drawn in Python from the CSVs. The second draws all 20
+supplementary PDFs in `cmpb_supp/`. Fig. S9 uses Table S20.5 to compare
+pointwise rejection and power with and without paired covariance. The
+[figure index](publication_figures/FIGURE_INDEX.md) maps each layout.
+Neither command refits any model or changes the original archive numbering.
+
+## Independent limma check (Supplementary Methods S11)
+
+```bash
+python run.py check-limma --output "$HOME/adjscope/paired_limma.json"
+```
+
+This small experiment generates 48 samples and 12 genes (seed 213), runs
+AdjScope-Tx and independently fits an equivalent contrast with
+limma's `contrastAsCoef` and `lmFit`. It checks extended-minus-baseline
+coefficients and **unmoderated, model-based** paired standard errors with
+shared weights. Both maximum absolute discrepancies must be below `1e-12`.
+It uses no study data. The [original server receipt](validation/paired_limma_reference.json)
+is for comparison only; it is not read by the experiment.
+The default checks the study's Python and R environment before fitting.
+`--smoke` runs a local compatibility check and never reports `PASS_LOCKED`.
+Use `--rscript` and repeatable `--r-library` for an existing R installation;
+without `--output` the JSON is printed only. Existing receipts are never overwritten.
+
 ## Reuse the diagnostics
 
 ```python
