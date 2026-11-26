@@ -1,4 +1,7 @@
 """Render the same section frames used for the CSVs as the submission workbook."""
+import json
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -24,6 +27,47 @@ NOTES = {
               '237 tests per model and specification.',
               'BH correction covers 1,422 planned tests per model or 237 per model and specification.'),
 }
+
+CATALOGUE_GUIDE = ('Primary human panel results: S2-S4. Post hoc gene examples: S8, S9.4 and S13.4. '
+                   'See Scope for each testing family.')
+EXAMPLE_SCOPES = {
+    'S8.1': 'Post hoc examples: GFAP, GSDMD and IGFBP5 across the designated supplementary astrocyte and comparator fits. BH columns retain their stated families.',
+    'S8.2': 'SEA-AD: three post hoc example genes by three contrasts and two fits (18 rows). Joint q values use 17,064 planned positions, not these 18 rows. Fig. S2.',
+    'S8.3': 'Three selected genes in the supplementary all-donor astrocyte comparison. The three-gene and panel-wide adjustments have different denominators.',
+    'S9.3': 'Definitions of the raw p values and BH families used for the supplementary gene examples in S9.4.',
+    'S9.4': 'Post hoc examples: three genes across twelve designated comparisons (36 planned positions, four unavailable). Read each q value with the family defined in S9.3.',
+    'S13.2': 'Additional EMP3 example across human and mouse fits. Read each row with its species, contrast and correction family.',
+    'S13.3': 'All 138 ortholog-mapped panel genes testable across the 18 mouse specifications; the gene-wise counts are not restricted to the illustrative genes. Fig. S3a.',
+    'S13.4': 'Mouse estimates for post hoc examples selected after the model-consistency analysis. Selection did not define the panel-wide testing family.',
+    'S20.5': 'General fixed-design grid, including six degenerate designs. Fig. S9 uses all 30 estimable matched-Gaussian designs for the paired and covariance-omitted comparison.',
+    'S21.7': 'All 32 held-out design-scenario pairs. The empirical FDR, two-sided Monte Carlo interval and one-sided screening upper bound are distinct quantities. Fig. S20.',
+}
+
+# These sections display the original source's logical labels as Excel text.
+_TEXT_FLAGS = frozenset(('S2.1','S3.2','S8.1','S8.3','S9.4','S11.1','S11.6',
+                         'S13.2','S18.2','S19.1','S19.2','S19.4','S19.5'))
+_UPPER_FLAGS = frozenset(('S6.5','S12.3','S12.9'))
+_MIXED_NUMBERS = {'S17.7':'value','S20.2':'value','S20.3':'value','S20.7':'value','S19.6':'sample'}
+
+
+def workbook_value(key, column, value):
+    value = value.item() if isinstance(value, np.generic) else value
+    if isinstance(value, bool):
+        if key in _UPPER_FLAGS:
+            return str(value).upper()
+        if key in _TEXT_FLAGS:
+            return str(value)
+    if isinstance(value, str) and column == _MIXED_NUMBERS.get(key) and value and value[0] in '-0123456789':
+        try:
+            number = json.loads(value)
+        except ValueError:
+            return value
+        # Preserve compound labels, padded identifiers and integers Excel cannot store exactly.
+        if type(number) is int and abs(number) < 10**15:
+            return number
+        if type(number) is float and math.isfinite(number):
+            return number
+    return value
 
 
 def section_scope(entry, frame):
@@ -52,6 +96,7 @@ def write_workbook(path, sections, entries):
     cat['A1'] = 'Supplementary Tables S1-S23'
     cat['A1'].font = bold
     cat.append([])
+    cat['A2'] = CATALOGUE_GUIDE
     cat.append(('Section', 'Worksheet', 'Header row', 'Records', 'Columns', 'Scope'))
     for c in cat[3]:
         c.font = bold
@@ -67,7 +112,7 @@ def write_workbook(path, sections, entries):
                        'Rates are proportions; all paired differences are null. Planned and retained families are separate.')
         sheet.freeze_panes = 'A4'
         next_row[sheet.title] = 4
-    for entry in entries:
+    for entry in sorted(entries, key=lambda e: tuple(map(int, e['id'][1:].split('.')))):
         key = entry['id']
         f = sections[key]
         # The planned gene count is needed by the plots, but is not a column of manuscript Table S22.1.
@@ -88,12 +133,14 @@ def write_workbook(path, sections, entries):
             for j, v in enumerate(row, 1):
                 if pd.isna(v):
                     continue
-                c = sh.cell(i, j, v.item() if isinstance(v, np.generic) else v)
-                if isinstance(v, str):
+                displayed = workbook_value(key, f.columns[j-1], v)
+                c = sh.cell(i, j, displayed)
+                if isinstance(displayed, str):
                     c.data_type = 's'
                 if key == 'S11.7' and j == 5:
                     c.number_format = '0.00%'
-        cat.append((key, sh.title, start+1, len(f), len(f.columns), section_scope(entry, f)))
+        scope = EXAMPLE_SCOPES.get(key, section_scope(entry, f))
+        cat.append((key, sh.title, start+1, len(f), len(f.columns), scope))
         cat.cell(cat.max_row, 6).alignment = wrap
         cat.row_dimensions[cat.max_row].height = 42
         next_row[sh.title] = start + len(f) + 4

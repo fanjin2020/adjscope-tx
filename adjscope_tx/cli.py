@@ -49,6 +49,8 @@ def parser():
     report.add_argument('--rscript', default='Rscript', help='Only needed for a missing saved Gaussian-geometry summary')
     report.add_argument('--output', type=Path, required=True)
     figures = commands.add_parser('figures', help='Draw manuscript figures from an exported CSV bundle')
+    figures.add_argument('--layout', choices=('archive','cmpb','cmpb-supplement'), default='archive',
+                         help='Archive numbering (default), the six CMPB main figures, or twenty supplementary figures')
     figures.add_argument('--source', type=Path, required=True)
     figures.add_argument('--output', type=Path, required=True)
     figures.add_argument('--python')
@@ -57,6 +59,11 @@ def parser():
     figures.add_argument('--editable', action='store_true', help='Also export SVG and PNG copies')
     figures.add_argument('--check-env', action='store_true')
     commands.add_parser('verify', help='Verify supplied publication data and figure sources')
+    limma = commands.add_parser('check-limma', help='Independently verify the unmoderated paired coefficient difference and SE (S11)')
+    limma.add_argument('--rscript', help='Existing Rscript executable (default: on PATH)')
+    limma.add_argument('--r-library', action='append', default=[], help='Existing R library; may be repeated')
+    limma.add_argument('--output', type=Path, help='Optional new JSON receipt; defaults to stdout only')
+    limma.add_argument('--smoke', action='store_true', help='Use local versions; cannot report a locked pass')
     commands.add_parser('test', help='Run numerical and workflow regression tests; no research downloads')
     design = commands.add_parser('design', help='Compute design diagnostics from sample metadata')
     design.add_argument('--metadata', type=Path, required=True)
@@ -202,7 +209,19 @@ def main(argv=None):
     elif args.command == 'verify':
         from .verification import main as verify
         verify()
+    elif args.command == 'check-limma':
+        from validation.paired_limma import run as check_limma
+        return check_limma(args)
     elif args.command == 'figures':
+        if args.layout in ('cmpb', 'cmpb-supplement'):
+            if args.figures or args.editable or args.tiff:
+                raise ValueError('The CMPB layouts export complete checked sets; --figures, --editable and --tiff are archive-only.')
+            module = 'supplement' if args.layout == 'cmpb-supplement' else 'redraw_figures'
+            cmd = [args.python or sys.executable, '-B', '-m', 'artwork.cmpb.' + module,
+                   '--source', str(args.source.resolve()), '--out', str(args.output.resolve())]
+            if args.check_env:
+                cmd.append('--check-env')
+            return subprocess.run(cmd, cwd=ROOT).returncode
         from .plotting import main as figures
         options = ['--output', str(args.output), '--source', str(args.source)]
         if args.python:
